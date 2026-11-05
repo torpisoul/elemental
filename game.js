@@ -1,3 +1,4 @@
+import { GAME_CONFIG } from "./game-config.mjs";
 import { DEFAULT_SIMULATION_SETTINGS, DEFAULT_SPELL_RULES, runSimulation } from "./simulation.mjs";
 
 const ELEMENTS = {
@@ -25,8 +26,8 @@ const ELEMENTS = {
 const ELEMENT_ORDER = Object.keys(ELEMENTS);
 const PLAYER_NAMES = ["You", "Ash", "Bramble", "Zephyr"];
 const SAVE_KEY = "elemental-game-save-v2";
-const SIMULATION_SETTINGS_KEY = "elemental-simulation-settings-v2";
-const LEGACY_SIMULATION_SETTINGS_KEY = "elemental-simulation-settings-v1";
+const SIMULATION_SETTINGS_KEY = "elemental-simulation-settings-v3";
+const LEGACY_SIMULATION_SETTINGS_KEYS = ["elemental-simulation-settings-v2", "elemental-simulation-settings-v1"];
 
 const $ = (selector) => document.querySelector(selector);
 const welcomeScreen = $("#welcome-screen");
@@ -35,30 +36,35 @@ const controlsElement = $("#action-controls");
 function loadSimulationSettings() {
   try {
     const currentSaved = localStorage.getItem(SIMULATION_SETTINGS_KEY);
-    const saved = currentSaved ?? localStorage.getItem(LEGACY_SIMULATION_SETTINGS_KEY);
+    const saved = currentSaved ?? LEGACY_SIMULATION_SETTINGS_KEYS
+      .map((key) => localStorage.getItem(key))
+      .find((value) => value !== null);
     if (!saved) return { ...DEFAULT_SIMULATION_SETTINGS, deck: { ...DEFAULT_SIMULATION_SETTINGS.deck } };
     const parsed = JSON.parse(saved);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error("Saved simulation settings must be an object.");
     }
+    const usesCurrentBalance = currentSaved && parsed.balanceVersion === GAME_CONFIG.version;
     const settings = {
       ...DEFAULT_SIMULATION_SETTINGS,
       ...parsed,
-      allowDiscardDraw: currentSaved ? parsed.allowDiscardDraw : DEFAULT_SIMULATION_SETTINGS.allowDiscardDraw,
+      balanceVersion: GAME_CONFIG.version,
+      allowDiscardDraw: usesCurrentBalance ? parsed.allowDiscardDraw : DEFAULT_SIMULATION_SETTINGS.allowDiscardDraw,
+      target: usesCurrentBalance ? parsed.target : DEFAULT_SIMULATION_SETTINGS.target,
       deck: {
         ...DEFAULT_SIMULATION_SETTINGS.deck,
-        ...(currentSaved && parsed.deck && typeof parsed.deck === "object" && !Array.isArray(parsed.deck)
+        ...(usesCurrentBalance && parsed.deck && typeof parsed.deck === "object" && !Array.isArray(parsed.deck)
           ? parsed.deck
           : {}),
       },
       rules: {
         ...DEFAULT_SPELL_RULES,
-        ...(currentSaved && parsed.rules && typeof parsed.rules === "object" && !Array.isArray(parsed.rules)
+        ...(usesCurrentBalance && parsed.rules && typeof parsed.rules === "object" && !Array.isArray(parsed.rules)
           ? parsed.rules
           : {}),
         drawAfterSpell: {
           ...DEFAULT_SPELL_RULES.drawAfterSpell,
-          ...(currentSaved && parsed.rules?.drawAfterSpell && typeof parsed.rules.drawAfterSpell === "object" &&
+          ...(usesCurrentBalance && parsed.rules?.drawAfterSpell && typeof parsed.rules.drawAfterSpell === "object" &&
             !Array.isArray(parsed.rules.drawAfterSpell) ? parsed.rules.drawAfterSpell : {}),
         },
       },
@@ -675,6 +681,8 @@ function renderActivity() {
 
 function render() {
   document.body.classList.toggle("in-game", Boolean(game));
+  $("#welcome-copy").textContent =
+    `Collect ${simulationSettings.target} cards of one element in your face-up hand to win. Cast a spell to help your set or disrupt the other players.`;
   $("#discard-rule-description").textContent = discardDrawEnabled
     ? "Otherwise, take exactly one action: cast one card as its spell, or discard one card and draw a replacement."
     : "Otherwise, cast one card from your hand as its spell.";
@@ -781,6 +789,7 @@ function updateSimulationTargetLimit() {
 
 function readSimulationForm() {
   return {
+    balanceVersion: GAME_CONFIG.version,
     matches: Number($("#sim-matches").value),
     players: Number($("#sim-players").value),
     target: Number($("#sim-target").value),
@@ -840,7 +849,10 @@ function persistSimulationSettings(settings) {
   simulationSettings = settings;
   discardDrawEnabled = settings.allowDiscardDraw;
   try {
-    localStorage.setItem(SIMULATION_SETTINGS_KEY, JSON.stringify(settings));
+    localStorage.setItem(SIMULATION_SETTINGS_KEY, JSON.stringify({
+      ...settings,
+      balanceVersion: GAME_CONFIG.version,
+    }));
     return true;
   } catch (error) {
     console.error("Could not save simulation settings.", error);

@@ -1,20 +1,18 @@
+import { GAME_CONFIG } from "./game-config.mjs";
+
 export const SIMULATION_ELEMENTS = ["fire", "earth", "water", "air"];
-export const DEFAULT_DECK_COUNTS = { fire: 10, earth: 9, water: 10, air: 9 };
+export const DEFAULT_DECK_COUNTS = { ...GAME_CONFIG.deck };
 export const DEFAULT_SPELL_RULES = {
-  drawAfterAnySpell: 1,
-  drawAfterSpell: { fire: 0, earth: 0, water: 0, air: 0 },
-  fireDiscardsPerOpponent: 2,
-  earthDraws: 2,
-  waterRecovers: 2,
-  airSteals: 1,
+  ...GAME_CONFIG.spells,
+  drawAfterSpell: { ...GAME_CONFIG.spells.drawAfterSpell },
 };
 export const DEFAULT_SIMULATION_SETTINGS = {
   matches: 100000,
   players: 4,
-  target: 7,
+  target: GAME_CONFIG.target,
   maxRounds: 500,
   seed: 1,
-  allowDiscardDraw: false,
+  allowDiscardDraw: GAME_CONFIG.allowDiscardDraw,
   strategy: "spell-first",
   deck: { ...DEFAULT_DECK_COUNTS },
   rules: {
