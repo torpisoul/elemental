@@ -1,6 +1,6 @@
-# Elemental Altars
+# Elemental
 
-A mobile-first, client-side PWA playtest for **Elemental Altars**. One human player competes against four AI opponents. The deck, turn flow, spell effects, and win conditions follow [the rulebook](./elemental_altars_rulebook.md), with the low-Mana redraw playtest variant noted below.
+A mobile-friendly, client-side PWA for playtesting **Elemental**, a quick face-up set-collection game for 2–4 players. The current rules are in [elemental_rulebook.md](./elemental_rulebook.md). [elemental_sim.py](./elemental_sim.py) is the companion balance simulation.
 
 ## Run locally
 
@@ -10,14 +10,14 @@ Serve the project directory over HTTP (service workers do not work from `file://
 python3 -m http.server 4173
 ```
 
-Then open [http://localhost:4173](http://localhost:4173). The app has no build step or external runtime dependencies. Once loaded, its app shell is cached for offline use, and the current game is saved in the browser's local storage.
+Then open [http://localhost:4173](http://localhost:4173). The app has no build step or runtime dependencies. Games save automatically in browser storage, and the app shell is cached for offline use.
 
-## Playtest controls
+## Digital playtest
 
-- Clicking a Mana card stages it automatically.
-- At the start of a turn, a hand with fewer than 2 Mana is discarded and redrawn to 5 once; the replacement hand is kept even if it is still low. The game log tracks this separately for you and the AI opponents.
-- Optionally select a Spell and 1 or 2 Mana fuel cards. For Basic Fire and all Air spells, click the chosen opponent's name to target them; this casts the selected basic or enhanced version. For Water, select 1 or 2 Mana cards in the discard pile and use the Basic or Enhanced button to reclaim them to your Altar. Other spells use the Basic or Enhanced action buttons. Casting a spell animates its effect and ends your turn automatically.
-- The table-action strip reports the latest actions and highlights opponent spell effects, including shield blocks.
-- Choose **Skip spell & end turn** to finish without casting.
-- Open **?** for the in-game spell reference. Use **New game** to reset the current playtest.
-- The game log tracks turns where your hand has Spells but no fuel left after staging, so you can monitor how often that play pattern occurs.
+- Choose 2, 3, or 4 total players. You play against the remaining AI opponents.
+- All hands are face-up. On your turn, draw one card, then cast one card as its spell or discard one card.
+- Tap a card in your hand to read its spell, then choose **Cast Spell** or **Discard Spell (Draw 1)**. Either action ends your turn.
+- Fire opponents choose their own discard to protect their largest set. If an AI casts Fire, you choose which of your cards to discard.
+- To cast Air, select an Air card, choose **Cast Spell**, then click a card in an opponent's hand to take it.
+- The game ends immediately when a player has 7 cards of one element.
+- Open **?** for the in-game rules. Use **New game** to reset the match.

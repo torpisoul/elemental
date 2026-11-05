@@ -4,124 +4,119 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#101718" />
-    <meta
-      name="description"
-      content="Playtest Elemental Altars, a fast and strategic elemental card game."
-    />
+    <meta name="description" content="Play Elemental, a quick face-up set-collection card game." />
     <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="stylesheet" href="./styles.css" />
-    <title>Elemental Altars</title>
+    <title>Elemental</title>
   </head>
   <body>
     <main class="app-shell">
       <header class="topbar">
-        <a class="brand" href="./" aria-label="Elemental Altars home">
+        <a class="brand" href="./" aria-label="Elemental home">
           <span class="brand-mark" aria-hidden="true">✦</span>
-          <span>ELEMENTAL <b>ALTARS</b></span>
+          <span>ELEMENTAL</span>
         </a>
         <button class="icon-button" id="rules-button" type="button" aria-label="Open rules">?</button>
       </header>
 
       <section class="welcome panel" id="welcome-screen">
-        <p class="eyebrow">A game of risk, timing &amp; elemental power</p>
-        <h1>Build your altar.<br /><span>Claim your victory.</span></h1>
+        <p class="eyebrow">A quick game of sets &amp; spells</p>
+        <h1>Collect seven.<br /><span>Become Elemental.</span></h1>
         <p class="welcome-copy">
-          Stage Mana to your Altar, then secure it in your Vault. Be the first to
-          collect <strong>46 points</strong> or <strong>10 cards</strong>.
+          Collect 7 cards of one element in your face-up hand to win. Cast a spell to help your set
+          or disrupt the other players.
         </p>
-        <div class="victory-cards">
-          <div class="victory-card"><span>01 / HOARDER</span><strong>46+</strong><small>points in your Vault</small></div>
-          <div class="victory-card"><span>02 / COLLECTOR</span><strong>10+</strong><small>cards in your Vault</small></div>
-        </div>
-        <button class="primary-button start-button" id="start-button" type="button">Begin a new game <span aria-hidden="true">→</span></button>
+        <label class="player-count-label" for="player-count">Players</label>
+        <select id="player-count">
+          <option value="2">2 players</option>
+          <option value="3">3 players</option>
+          <option value="4" selected>4 players</option>
+        </select>
+        <button class="primary-button start-button" id="start-button" type="button">Start a new game <span aria-hidden="true">→</span></button>
         <p class="save-note" id="save-note">Your game saves automatically on this device.</p>
       </section>
 
       <section class="game-screen hidden" id="game-screen" aria-live="polite">
         <div class="game-heading">
           <div>
-            <p class="eyebrow" id="turn-label">YOUR TURN · TURN 1</p>
-            <h1 id="phase-title">Your Altar awaits.</h1>
+            <p class="eyebrow" id="turn-label">ROUND 1</p>
+            <h1 id="phase-title">Your turn</h1>
           </div>
-          <button class="quiet-button" id="new-game-button" type="button">New game</button>
+          <div class="game-heading-actions">
+            <button class="icon-button log-button" id="log-button" type="button" aria-label="Open game log" title="Game log">
+              <span aria-hidden="true">☷</span><span class="log-count-badge" id="log-count">0</span>
+            </button>
+            <button class="quiet-button" id="new-game-button" type="button">New game</button>
+          </div>
         </div>
+
+        <section class="table-center" aria-label="Game piles">
+          <div class="table-stat"><span>DRAW PILE</span><strong id="deck-count">28</strong></div>
+          <div class="discard-pile" id="discard-pile">
+            <span class="discard-label">DISCARD TOP</span>
+            <div id="discard-top-card" class="top-card empty">—</div>
+            <small><span id="discard-count">0</span> cards</small>
+          </div>
+          <div class="table-stat"><span>ROUND</span><strong id="round-count">1</strong></div>
+        </section>
 
         <section class="table-activity" id="table-activity" aria-label="Recent game actions">
           <span class="eyebrow">TABLE ACTION</span>
           <ol id="activity-list" aria-live="polite"></ol>
         </section>
 
-        <section class="opponents" id="opponents" aria-label="Opponents"></section>
-
-        <section class="table-center">
-          <div class="table-stat"><span>DRAW PILE</span><strong id="deck-count">100</strong></div>
-          <div class="discard-pile" id="discard-pile">
-            <span class="discard-icon" aria-hidden="true">✦</span>
-            <span class="discard-label">DISCARD</span>
-            <strong id="discard-count">0</strong>
-            <small id="discard-top">empty</small>
-          </div>
-          <div class="table-stat"><span>ROUND</span><strong id="round-count">1</strong></div>
-        </section>
-
-        <section class="water-reclaim hidden" id="water-reclaim" aria-label="Select Mana to recover from discard">
-          <p class="eyebrow" id="water-reclaim-prompt">Choose Mana from the discard pile for your Altar.</p>
-          <div class="water-reclaim-cards" id="water-reclaim-cards"></div>
-        </section>
-
-        <section class="player-board panel" id="human-board" aria-label="Your play area">
-          <div class="player-heading">
-            <div class="player-name"><span class="you-dot"></span><div><span class="eyebrow">YOUR AREA</span><strong>You</strong></div></div>
-            <div class="vault-score"><span>VAULT</span><strong id="vault-score">0 <small>pts</small></strong><small id="vault-cards">0 cards</small></div>
-          </div>
-          <div class="altar-area" id="human-altar-area">
-            <div class="altar-label"><span>YOUR ALTAR</span><span id="shield-indicator"></span></div>
-            <div class="altar-cards" id="human-altar"></div>
-            <p class="altar-hint" id="altar-hint">Click a Mana card in your hand to stage here.</p>
-          </div>
-        </section>
-
-        <section class="action-panel panel" id="action-panel">
-          <div class="action-copy"><span class="action-step" id="step-number">STEP 2 OF 4</span><strong id="action-title">Stage Mana</strong><small id="action-description">Click a Mana card in your hand to stage it.</small></div>
-          <div class="action-controls" id="action-controls"></div>
-        </section>
-
-        <section class="hand-section">
-          <div class="hand-heading">
-            <div><p class="eyebrow">YOUR HAND</p><h2 id="hand-count">5 cards</h2></div>
-            <span class="selection-hint" id="selection-hint">Click a Mana card to stage.</span>
-          </div>
-          <div class="hand-cards" id="hand-cards" aria-label="Cards in your hand"></div>
-        </section>
-
-        <details class="game-log panel">
-          <summary><span>Game log</span><span class="log-metrics"><span id="spell-fuel-stat">No-fuel 0/0 · Low-Mana redraws 0 you / 0 AI</span><span id="log-count">0</span></span></summary>
-          <ol id="log-list"></ol>
-        </details>
+        <div class="play-layout">
+          <section class="players" id="players" aria-label="Opponents"></section>
+          <section class="spell-tip" id="spell-tip" aria-live="polite" aria-label="Your action">
+            <span class="action-step" id="step-number">YOUR ACTION</span>
+            <strong id="spell-tip-title">Choose a card</strong>
+            <p id="spell-tip-text">Select a card in your hand to see its spell and choose what to do.</p>
+            <p id="action-description" class="action-description"></p>
+            <div class="action-controls" id="action-controls"></div>
+          </section>
+          <section class="human-hand-board player-board human-player" id="human-hand-board" aria-label="Your face-up hand">
+            <div class="player-heading">
+              <strong>You</strong>
+              <span class="player-status" id="human-status">YOUR HAND</span>
+            </div>
+            <div class="face-up-hand human-hand" id="human-hand"></div>
+          </section>
+        </div>
       </section>
     </main>
 
     <dialog id="rules-dialog" class="modal">
-      <div class="modal-heading"><div><p class="eyebrow">QUICK REFERENCE</p><h2>How to play</h2></div><button class="icon-button close-dialog" type="button" aria-label="Close rules">×</button></div>
+      <div class="modal-heading">
+        <div><p class="eyebrow">QUICK REFERENCE</p><h2>How to play</h2></div>
+        <button class="icon-button close-dialog" type="button" aria-label="Close rules">×</button>
+      </div>
       <ol class="rules-list">
-        <li><strong>Claim Altar.</strong> Move all Mana on your Altar into your Vault.</li>
-        <li><strong>Stage Mana.</strong> Place 1 Mana from your hand on your Altar. In this playtest, if you start your turn with fewer than 2 Mana, discard your hand and draw 5 once; keep the replacement even if it is still low, then stage 1 Mana if available.</li>
-        <li><strong>Cast a Spell (optional).</strong> Spend 1 Spell and either 1 Mana for its basic effect or 2 Mana for its enhanced effect. Maximum 1 Spell per turn.</li>
-        <li><strong>Draw to 5.</strong> Refill your hand. When the deck empties, shuffle the discard pile to make a new deck.</li>
+        <li>Everyone keeps their hand face-up. Deal 3 cards to each player.</li>
+        <li>On your turn, draw 1 card. If you now have 7 of one element, you win immediately.</li>
+        <li>Otherwise, take exactly one action: cast one card as its spell, or discard one card and draw a replacement.</li>
+        <li>Your turn ends after that action. Shuffle the discard pile if the draw pile runs out.</li>
       </ol>
       <div class="spell-reference">
-        <p><b>🔥 Fire</b><span>Discard 1 Mana from an opponent's Altar; enhanced hits all opponents.</span></p>
-        <p><b>🌿 Earth</b><span>Basic blocks the next spell targeting your Altar. Enhanced blocks every spell targeting your Altar until your next turn.</span></p>
-        <p><b>💧 Water</b><span>Choose 1 or up to 2 Mana from the discard pile and add them to your Altar.</span></p>
-        <p><b>⚡ Air</b><span>Choose an opponent and steal their highest Mana to your Altar; enhanced steals up to 2 highest Mana.</span></p>
+        <p><b>🔥 Fire</b><span>Every opponent, starting with the next player, chooses one card from their own hand to discard.</span></p>
+        <p><b>🌿 Earth</b><span>Draw 2 cards.</span></p>
+        <p><b>💧 Water</b><span>Take the current top discard into your hand. The Water card you played is then placed on top.</span></p>
+        <p><b>⚡ Air</b><span>Choose an opponent and take one card from their hand.</span></p>
       </div>
-      <p class="modal-footnote">First to 46+ Vault points or 10+ Vault cards wins at the end of their turn. Basic shields block the next spell targeting your Altar; enhanced shields block all such spells until your next turn.</p>
+      <p class="modal-footnote">First player with 7 cards of the same element wins. In this digital playtest, AI opponents choose their own Fire discard; when an AI targets you with Fire, you choose your card.</p>
+    </dialog>
+
+    <dialog id="log-dialog" class="modal log-modal">
+      <div class="modal-heading">
+        <div><p class="eyebrow">MATCH HISTORY</p><h2>Game log</h2></div>
+        <button class="icon-button close-log-dialog" type="button" aria-label="Close game log">×</button>
+      </div>
+      <ol id="log-list"></ol>
     </dialog>
 
     <dialog id="result-dialog" class="modal result-modal">
       <p class="eyebrow" id="result-eyebrow">GAME OVER</p>
-      <h2 id="result-title">Victory!</h2>
+      <h2 id="result-title">Elemental!</h2>
       <p id="result-copy"></p>
       <button class="primary-button" id="play-again-button" type="button">Play again <span aria-hidden="true">→</span></button>
     </dialog>

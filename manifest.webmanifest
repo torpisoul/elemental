@@ -1,7 +1,7 @@
 {
-  "name": "Elemental Altars",
-  "short_name": "Altars",
-  "description": "A strategic elemental card game playtest.",
+  "name": "Elemental",
+  "short_name": "Elemental",
+  "description": "A quick face-up set-collection card game.",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#101718",
