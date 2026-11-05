@@ -17,7 +17,10 @@
           <span class="brand-mark" aria-hidden="true">✦</span>
           <span>ELEMENTAL</span>
         </a>
-        <button class="icon-button" id="rules-button" type="button" aria-label="Open rules">?</button>
+        <div class="topbar-tools">
+          <button class="icon-button" id="simulation-button" type="button" aria-label="Open simulation lab" title="Simulation lab">∑</button>
+          <button class="icon-button" id="rules-button" type="button" aria-label="Open rules">?</button>
+        </div>
       </header>
 
       <section class="welcome panel" id="welcome-screen">
@@ -93,17 +96,68 @@
       </div>
       <ol class="rules-list">
         <li>Everyone keeps their hand face-up. Deal 3 cards to each player.</li>
-        <li>On your turn, draw 1 card. If you now have 7 of one element, you win immediately.</li>
-        <li>Otherwise, take exactly one action: cast one card as its spell, or discard one card and draw a replacement.</li>
+        <li id="win-rule-description">On your turn, draw 1 card. If you now have 7 of one element, you win immediately.</li>
+        <li id="discard-rule-description">Otherwise, take exactly one action: cast one card as its spell, or discard one card and draw a replacement.</li>
         <li>Your turn ends after that action. Shuffle the discard pile if the draw pile runs out.</li>
       </ol>
       <div class="spell-reference">
-        <p><b>🔥 Fire</b><span>Every opponent, starting with the next player, chooses one card from their own hand to discard.</span></p>
-        <p><b>🌿 Earth</b><span>Draw 2 cards.</span></p>
-        <p><b>💧 Water</b><span>Take the current top discard into your hand. The Water card you played is then placed on top.</span></p>
-        <p><b>⚡ Air</b><span>Choose an opponent and take one card from their hand.</span></p>
+        <p><b>🔥 Fire</b><span id="rules-fire-description"></span></p>
+        <p><b>🌿 Earth</b><span id="rules-earth-description"></span></p>
+        <p><b>💧 Water</b><span id="rules-water-description"></span></p>
+        <p><b>⚡ Air</b><span id="rules-air-description"></span></p>
       </div>
-      <p class="modal-footnote">First player with 7 cards of the same element wins. In this digital playtest, AI opponents choose their own Fire discard; when an AI targets you with Fire, you choose your card.</p>
+      <p class="modal-footnote" id="rules-win-footnote">First player with 7 cards of the same element wins. In this digital playtest, AI opponents choose their own Fire discard; when an AI targets you with Fire, you choose your card.</p>
+    </dialog>
+
+    <dialog id="simulation-dialog" class="modal simulation-modal">
+      <div class="modal-heading">
+        <div><p class="eyebrow">BALANCE PLAYGROUND</p><h2>Simulation lab</h2></div>
+        <button class="icon-button close-simulation-dialog" type="button" aria-label="Close simulation lab">×</button>
+      </div>
+      <p class="simulation-intro">Run up to 100,000 AI-only matches per setup; results aggregate across every completed match. Compare the discard-and-draw action on and off using the same random seed. These settings also control the discard action in your manual games.</p>
+      <form id="simulation-form" class="simulation-form">
+        <label>Matches<input id="sim-matches" type="number" min="1" max="100000" step="1" required /></label>
+        <label>Players<select id="sim-players"><option value="2">2 players</option><option value="3">3 players</option><option value="4">4 players</option></select></label>
+        <label>Win target<input id="sim-target" type="number" min="2" max="40" required /></label>
+        <label>Maximum rounds<input id="sim-max-rounds" type="number" min="1" max="5000" required /></label>
+        <label>Random seed<input id="sim-seed" type="number" min="0" max="4294967295" step="1" required /></label>
+        <label>AI action style
+          <select id="sim-strategy">
+            <option value="spell-first">Cast useful spells first</option>
+            <option value="discard-first">Replace off-set cards first</option>
+            <option value="random">Choose a random legal action</option>
+          </select>
+        </label>
+        <fieldset class="simulation-deck">
+          <legend>Cards in the deck</legend>
+          <label>🔥 Fire<input id="sim-fire" type="number" min="0" max="1000" required /></label>
+          <label>🌿 Earth<input id="sim-earth" type="number" min="0" max="1000" required /></label>
+          <label>💧 Water<input id="sim-water" type="number" min="0" max="1000" required /></label>
+          <label>⚡ Air<input id="sim-air" type="number" min="0" max="1000" required /></label>
+        </fieldset>
+        <fieldset class="simulation-rules">
+          <legend>Adjustable spell rules</legend>
+          <label>Draw after every spell<input id="sim-rule-global-draw" type="number" min="0" max="10" step="1" required /></label>
+          <label>🔥 Fire: discards per opponent<input id="sim-rule-fire-discard" type="number" min="0" max="10" step="1" required /></label>
+          <label>🌿 Earth: cards drawn<input id="sim-rule-earth-draw" type="number" min="0" max="10" step="1" required /></label>
+          <label>💧 Water: discards recovered<input id="sim-rule-water-recover" type="number" min="0" max="10" step="1" required /></label>
+          <label>⚡ Air: cards stolen<input id="sim-rule-air-steal" type="number" min="0" max="10" step="1" required /></label>
+          <label>🔥 Fire: extra draws after casting<input id="sim-rule-fire-replace" type="number" min="0" max="10" step="1" required /></label>
+          <label>🌿 Earth: extra draws after casting<input id="sim-rule-earth-replace" type="number" min="0" max="10" step="1" required /></label>
+          <label>💧 Water: extra draws after casting<input id="sim-rule-water-replace" type="number" min="0" max="10" step="1" required /></label>
+          <label>⚡ Air: extra draws after casting<input id="sim-rule-air-replace" type="number" min="0" max="10" step="1" required /></label>
+          <button class="quiet-button" id="reset-spell-rules" type="button">Restore default spell rules</button>
+        </fieldset>
+        <label class="simulation-toggle"><input id="sim-discard-draw" type="checkbox" /> Allow “Discard 1, Draw 1”</label>
+        <p class="simulation-note">Spell-rule edits apply immediately to manual games and are saved on this device. The global and per-spell replacement draws stack. When discard-and-draw is off, a player must cast a card; “Replace off-set cards first” only affects AI when discard-and-draw is on.</p>
+        <div class="simulation-buttons">
+          <button class="primary-button" id="run-simulation-button" type="button">Run this setup</button>
+          <button class="quiet-button" id="compare-simulation-button" type="button">Compare action on/off</button>
+        </div>
+      </form>
+      <p class="simulation-status" id="simulation-status" role="status" aria-live="polite"></p>
+      <p class="simulation-error hidden" id="simulation-error" role="alert"></p>
+      <div id="simulation-results" class="simulation-results" aria-live="polite"></div>
     </dialog>
 
     <dialog id="log-dialog" class="modal log-modal">

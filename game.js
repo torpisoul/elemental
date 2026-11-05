@@ -1,45 +1,132 @@
+import { DEFAULT_SIMULATION_SETTINGS, DEFAULT_SPELL_RULES, runSimulation } from "./simulation.mjs";
+
 const ELEMENTS = {
   fire: {
     label: "Fire",
     icon: "🔥",
     className: "fire",
-    description: "Every opponent, starting with the next player, chooses one card from their own hand to discard.",
   },
   earth: {
     label: "Earth",
     icon: "🌿",
     className: "earth",
-    description: "Draw 2 cards from the deck into your hand.",
   },
   air: {
     label: "Air",
     icon: "⚡",
     className: "air",
-    description: "Choose an opponent and take one card from their face-up hand.",
   },
   water: {
     label: "Water",
     icon: "💧",
     className: "water",
-    description: "Take the top card of the discard pile into your hand. The Water card you played then becomes the new top discard.",
   },
 };
 const ELEMENT_ORDER = Object.keys(ELEMENTS);
-const DECK_COUNTS = { fire: 9, earth: 10, water: 11, air: 10 };
 const PLAYER_NAMES = ["You", "Ash", "Bramble", "Zephyr"];
 const SAVE_KEY = "elemental-game-save-v2";
+const SIMULATION_SETTINGS_KEY = "elemental-simulation-settings-v2";
+const LEGACY_SIMULATION_SETTINGS_KEY = "elemental-simulation-settings-v1";
 
 const $ = (selector) => document.querySelector(selector);
 const welcomeScreen = $("#welcome-screen");
 const gameScreen = $("#game-screen");
 const controlsElement = $("#action-controls");
+function loadSimulationSettings() {
+  try {
+    const currentSaved = localStorage.getItem(SIMULATION_SETTINGS_KEY);
+    const saved = currentSaved ?? localStorage.getItem(LEGACY_SIMULATION_SETTINGS_KEY);
+    if (!saved) return { ...DEFAULT_SIMULATION_SETTINGS, deck: { ...DEFAULT_SIMULATION_SETTINGS.deck } };
+    const parsed = JSON.parse(saved);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Saved simulation settings must be an object.");
+    }
+    const settings = {
+      ...DEFAULT_SIMULATION_SETTINGS,
+      ...parsed,
+      allowDiscardDraw: currentSaved ? parsed.allowDiscardDraw : DEFAULT_SIMULATION_SETTINGS.allowDiscardDraw,
+      deck: {
+        ...DEFAULT_SIMULATION_SETTINGS.deck,
+        ...(currentSaved && parsed.deck && typeof parsed.deck === "object" && !Array.isArray(parsed.deck)
+          ? parsed.deck
+          : {}),
+      },
+      rules: {
+        ...DEFAULT_SPELL_RULES,
+        ...(currentSaved && parsed.rules && typeof parsed.rules === "object" && !Array.isArray(parsed.rules)
+          ? parsed.rules
+          : {}),
+        drawAfterSpell: {
+          ...DEFAULT_SPELL_RULES.drawAfterSpell,
+          ...(currentSaved && parsed.rules?.drawAfterSpell && typeof parsed.rules.drawAfterSpell === "object" &&
+            !Array.isArray(parsed.rules.drawAfterSpell) ? parsed.rules.drawAfterSpell : {}),
+        },
+      },
+    };
+    const deckTotal = Object.values(settings.deck).reduce((sum, count) => sum + count, 0);
+    if (!Number.isInteger(settings.matches) || settings.matches < 1 || settings.matches > 100000 ||
+        !Number.isInteger(settings.players) || settings.players < 2 || settings.players > 4 ||
+        !Number.isInteger(settings.target) || settings.target < 2 || settings.target > deckTotal ||
+        !Number.isInteger(settings.maxRounds) || settings.maxRounds < 1 || settings.maxRounds > 5000 ||
+        !Number.isInteger(settings.seed) || settings.seed < 0 || settings.seed > 4294967295 ||
+        !["spell-first", "discard-first", "random"].includes(settings.strategy) ||
+        typeof settings.allowDiscardDraw !== "boolean" ||
+        Object.keys(settings.deck).some((element) => !Object.hasOwn(DEFAULT_SIMULATION_SETTINGS.deck, element)) ||
+        Object.values(settings.deck).some((count) => !Number.isInteger(count) || count < 0 || count > 1000) ||
+        Object.keys(settings.rules).some((rule) => !Object.hasOwn(DEFAULT_SPELL_RULES, rule)) ||
+        Object.keys(settings.rules.drawAfterSpell).some((element) => !ELEMENT_ORDER.includes(element)) ||
+        Object.values(settings.rules.drawAfterSpell).some((count) => !Number.isInteger(count) || count < 0 || count > 10) ||
+        [settings.rules.drawAfterAnySpell, settings.rules.fireDiscardsPerOpponent, settings.rules.earthDraws,
+          settings.rules.waterRecovers, settings.rules.airSteals]
+          .some((count) => !Number.isInteger(count) || count < 0 || count > 10) ||
+        deckTotal < settings.players * 3) {
+      throw new Error("Saved simulation settings are outside the supported ranges.");
+    }
+    return settings;
+  } catch (error) {
+    console.error("Could not load simulation settings.", error);
+    return { ...DEFAULT_SIMULATION_SETTINGS, deck: { ...DEFAULT_SIMULATION_SETTINGS.deck } };
+  }
+}
+
+let simulationSettings = loadSimulationSettings();
 let game = null;
 let selectedCardId = null;
 let targetingAir = false;
 let aiTimer = null;
+let discardDrawEnabled = simulationSettings.allowDiscardDraw;
+
+function spellDescription(element) {
+  const { rules } = simulationSettings;
+  const descriptions = {
+    fire: rules.fireDiscardsPerOpponent
+      ? `Every opponent, starting with the next player, chooses ${rules.fireDiscardsPerOpponent} card${rules.fireDiscardsPerOpponent === 2 ? "" : "s"} from their hand to discard.`
+      : "Fire has no discard effect.",
+    earth: `Draw ${rules.earthDraws} card${rules.earthDraws === 2 ? "" : "s"} from the deck.`,
+    water: rules.waterRecovers
+      ? `Take up to ${rules.waterRecovers} top card${rules.waterRecovers === 1 ? "" : "s"} from the discard pile. The Water card you played is then placed on top.`
+      : "Water does not recover cards from the discard pile. The Water card you played is placed on top.",
+    air: rules.airSteals
+      ? `Choose an opponent and take up to ${rules.airSteals} card${rules.airSteals === 1 ? "" : "s"} of one element from their hand.`
+      : "Air has no steal effect.",
+  };
+  const extraDraws = rules.drawAfterAnySpell + rules.drawAfterSpell[element];
+  return `${descriptions[element]}${extraDraws ? ` Then draw ${extraDraws} replacement card${extraDraws === 1 ? "" : "s"}.` : ""}`;
+}
+
+function updateSpellReference() {
+  for (const element of ELEMENT_ORDER) {
+    const description = $(`#rules-${element}-description`);
+    if (description) description.textContent = spellDescription(element);
+  }
+  $("#win-rule-description").textContent =
+    `On your turn, draw 1 card. If you now have ${simulationSettings.target} of one element, you win immediately.`;
+  $("#rules-win-footnote").textContent =
+    `First player with ${simulationSettings.target} cards of the same element wins. In this digital playtest, AI opponents choose their own Fire discard; when an AI targets you with Fire, you choose your card.`;
+}
 
 function createDeck() {
-  return shuffle(Object.entries(DECK_COUNTS).flatMap(([element, count]) =>
+  return shuffle(Object.entries(simulationSettings.deck).flatMap(([element, count]) =>
     Array.from({ length: count }, () => ({ id: crypto.randomUUID(), element })),
   ));
 }
@@ -74,6 +161,7 @@ function newGame(playerCount = Number($("#player-count").value)) {
     phase: "draw",
     pendingFireQueue: null,
     pendingHumanDiscard: null,
+    pendingFireCasterId: null,
     winner: null,
     log: [],
     activity: [],
@@ -112,7 +200,7 @@ function dominantElement(player) {
 }
 
 function winningElement(player) {
-  return ELEMENT_ORDER.find((element) => player.hand.filter((card) => card.element === element).length >= 7) ?? null;
+  return ELEMENT_ORDER.find((element) => player.hand.filter((card) => card.element === element).length >= simulationSettings.target) ?? null;
 }
 
 function checkForWinner(player) {
@@ -122,7 +210,8 @@ function checkForWinner(player) {
   game.phase = "game-over";
   game.pendingFireQueue = null;
   game.pendingHumanDiscard = null;
-  addActivity(`${player.name} collected 7 ${ELEMENTS[element].label} cards and wins!`, ELEMENTS[element].icon, "win");
+  game.pendingFireCasterId = null;
+  addActivity(`${player.name} collected ${simulationSettings.target} ${ELEMENTS[element].label} cards and wins!`, ELEMENTS[element].icon, "win");
   saveGame();
   render();
   showResult();
@@ -185,7 +274,8 @@ function opponentsInTurnOrder(playerIndex) {
 function castSpell(caster, cardId, targetPlayerIndex = null, targetCardId = null) {
   const spellInHand = caster.hand.find((card) => card.id === cardId);
   if (!spellInHand) return false;
-  if (spellInHand.element === "air") {
+  if (spellInHand.element === "air" && simulationSettings.rules.airSteals > 0 &&
+      (targetPlayerIndex !== null || targetCardId !== null)) {
     const target = game.players[targetPlayerIndex];
     if (!target || target === caster || !target.hand.some((card) => card.id === targetCardId)) return false;
   }
@@ -194,42 +284,71 @@ function castSpell(caster, cardId, targetPlayerIndex = null, targetCardId = null
   addActivity(`${caster.name} cast ${ELEMENTS[element].label}.`, ELEMENTS[element].icon, "spell");
 
   if (element === "water") {
-    const recovered = game.discard.pop();
-    if (recovered) {
-      caster.hand.push(recovered);
-      addActivity(`${caster.name} took ${ELEMENTS[recovered.element].label} from the top of the discard pile.`, ELEMENTS[recovered.element].icon, "water");
-    } else {
-      addActivity("The discard pile was empty; Water recovered nothing.", ELEMENTS.water.icon, "water");
-    }
     game.discard.push(spell);
-    if (checkForWinner(caster)) return true;
+    let recoveredCount = 0;
+    for (let recovery = 0; recovery < simulationSettings.rules.waterRecovers && game.discard.length > 1; recovery += 1) {
+      const recovered = game.discard.splice(game.discard.length - 2, 1)[0];
+      caster.hand.push(recovered);
+      recoveredCount += 1;
+      addActivity(`${caster.name} took ${ELEMENTS[recovered.element].label} from the top of the discard pile.`, ELEMENTS[recovered.element].icon, "water");
+      if (checkForWinner(caster)) return true;
+    }
+    if (!recoveredCount) {
+      addActivity("Water recovered no cards from the discard pile.", ELEMENTS.water.icon, "water");
+    }
   } else {
     game.discard.push(spell);
     if (element === "earth") {
-      for (let draw = 0; draw < 2; draw += 1) {
+      for (let draw = 0; draw < simulationSettings.rules.earthDraws; draw += 1) {
         const card = drawOne(caster);
         if (!card) break;
         addActivity(`${caster.name} drew ${ELEMENTS[card.element].label} with Earth.`, ELEMENTS.earth.icon, "earth");
         if (checkForWinner(caster)) return true;
       }
     } else if (element === "air") {
-      const target = game.players[targetPlayerIndex];
-      if (!target || target === caster) return false;
-      const stolen = removeFromHand(target, targetCardId);
-      if (!stolen) return false;
-      caster.hand.push(stolen);
-      addActivity(`${caster.name} took ${ELEMENTS[stolen.element].label} from ${target.name}.`, ELEMENTS.air.icon, "air");
-      if (checkForWinner(caster)) return true;
+      if (simulationSettings.rules.airSteals > 0) {
+        const target = game.players[targetPlayerIndex];
+        const firstCard = target?.hand.find((card) => card.id === targetCardId);
+        if (target && firstCard) {
+          for (let steal = 0; steal < simulationSettings.rules.airSteals; steal += 1) {
+            const stolen = steal === 0
+              ? removeFromHand(target, targetCardId)
+              : removeFromHand(target, target.hand.find((card) => card.element === firstCard.element)?.id);
+            if (!stolen) break;
+            caster.hand.push(stolen);
+            addActivity(`${caster.name} took ${ELEMENTS[stolen.element].label} from ${target.name}.`, ELEMENTS.air.icon, "air");
+            if (checkForWinner(caster)) return true;
+          }
+        } else {
+          addActivity("Air found no card to steal.", ELEMENTS.air.icon, "air");
+        }
+      } else {
+        addActivity("Air has no steal effect.", ELEMENTS.air.icon, "air");
+      }
     } else if (element === "fire") {
-      game.pendingFireQueue = opponentsInTurnOrder(game.currentPlayer);
+      game.pendingFireQueue = Array.from({ length: simulationSettings.rules.fireDiscardsPerOpponent }, () =>
+        opponentsInTurnOrder(game.currentPlayer)).flat();
+      game.pendingFireCasterId = caster.id;
       game.phase = "fire-discard";
       processFireQueue();
       return true;
     }
   }
 
+  if (drawSpellReplacements(caster, element)) return true;
   finishTurn();
   return true;
+}
+
+function drawSpellReplacements(player, element) {
+  const count = simulationSettings.rules.drawAfterAnySpell + simulationSettings.rules.drawAfterSpell[element];
+  for (let draw = 0; draw < count; draw += 1) {
+    const card = drawOne(player);
+    if (!card) break;
+    addActivity(`${player.name} drew ${ELEMENTS[card.element].label} to replace their ${ELEMENTS[element].label} spell.`, ELEMENTS[element].icon, "draw");
+    if (checkForWinner(player)) return true;
+  }
+  return false;
 }
 
 function chooseAIDiscard(player) {
@@ -257,6 +376,9 @@ function processFireQueue() {
 
   game.pendingFireQueue = null;
   game.pendingHumanDiscard = null;
+  const caster = game.players.find((player) => player.id === game.pendingFireCasterId);
+  game.pendingFireCasterId = null;
+  if (!game.winner && caster && drawSpellReplacements(caster, "fire")) return;
   if (!game.winner) finishTurn();
 }
 
@@ -269,7 +391,8 @@ function chooseAIAction(player) {
   }
   const spell = player.hand.find((card) => card.element !== targetElement);
   if (spell) return { type: "cast", card: spell };
-  return { type: "discard", card: chooseAIDiscard(player) };
+  if (discardDrawEnabled) return { type: "discard", card: chooseAIDiscard(player) };
+  return { type: "cast", card: player.hand[0] };
 }
 
 function runAITurn() {
@@ -291,7 +414,7 @@ function runAITurn() {
     return;
   }
 
-  if (action.card.element === "air") {
+  if (action.card.element === "air" && simulationSettings.rules.airSteals > 0) {
     const needed = dominantElement(player);
     const targetIndex = opponentsInTurnOrder(game.currentPlayer).find((index) =>
       game.players[index].hand.some((card) => card.element === needed),
@@ -299,18 +422,10 @@ function runAITurn() {
     const target = targetIndex === undefined ? null : game.players[targetIndex];
     const stolen = target?.hand.find((card) => card.element === needed);
     if (target && stolen) castSpell(player, action.card.id, targetIndex, stolen.id);
-    else castSpellWithoutAirTarget(player, action.card);
+    else castSpell(player, action.card.id);
     return;
   }
   castSpell(player, action.card.id);
-}
-
-function castSpellWithoutAirTarget(caster, card) {
-  const spell = removeFromHand(caster, card.id);
-  if (!spell) return;
-  game.discard.push(spell);
-  addActivity(`${caster.name} cast Air, but nobody had a card in their set to steal.`, ELEMENTS.air.icon, "air");
-  finishTurn();
 }
 
 function scheduleAI() {
@@ -342,7 +457,8 @@ function humanCastSelected(targetPlayerIndex = null, targetCardId = null) {
   if (game.phase !== "action" || game.currentPlayer !== 0) return;
   const spell = game.players[0].hand.find((card) => card.id === selectedCardId);
   if (!spell) return;
-  if (spell.element === "air" && (targetPlayerIndex === null || !targetCardId)) {
+  if (spell.element === "air" && simulationSettings.rules.airSteals > 0 &&
+      (targetPlayerIndex === null || !targetCardId)) {
     targetingAir = true;
     render();
     return;
@@ -355,7 +471,7 @@ function humanCastSelected(targetPlayerIndex = null, targetCardId = null) {
 }
 
 function discardAndDrawSelected() {
-  if (game.phase !== "action" || game.currentPlayer !== 0 || !selectedCardId) return;
+  if (!discardDrawEnabled || game.phase !== "action" || game.currentPlayer !== 0 || !selectedCardId) return;
   const player = game.players[0];
   if (!discardCard(player, selectedCardId)) return;
   selectedCardId = null;
@@ -379,7 +495,7 @@ function showResult() {
   $("#result-eyebrow").textContent = winner.playerId === "player-0" ? "YOU WIN!" : "GAME OVER";
   $("#result-title").textContent = winner.playerId === "player-0" ? "Elemental!" : `${winner.playerName} wins!`;
   $("#result-copy").textContent =
-    `${winner.playerName} collected 7 ${ELEMENTS[winner.element].label} cards.`;
+    `${winner.playerName} collected ${simulationSettings.target} ${ELEMENTS[winner.element].label} cards.`;
   const dialog = $("#result-dialog");
   if (!dialog.open) dialog.showModal();
 }
@@ -493,11 +609,13 @@ function renderActions() {
     return;
   }
   if (game.phase === "defend") {
+    const humanIndex = game.players.findIndex((player) => player.id === game.pendingHumanDiscard);
+    const fireDiscardsRemaining = 1 + (game.pendingFireQueue ?? []).filter((index) => index === humanIndex).length;
     $("#step-number").textContent = "FIRE!";
     spellTip.className = "spell-tip element-fire";
     spellTipTitle.textContent = "🔥 Fire: choose a card to discard";
-    spellTipText.textContent = "An opponent cast Fire. Tap one card in your hand to discard it.";
-    spellTip.setAttribute("aria-label", "Fire: choose a card to discard. An opponent cast Fire. Tap one card in your hand to discard it.");
+    spellTipText.textContent = `An opponent cast Fire. Tap a card in your hand to discard it. ${fireDiscardsRemaining} discard${fireDiscardsRemaining === 1 ? "" : "s"} remain for you.`;
+    spellTip.setAttribute("aria-label", `Fire: choose a card to discard. ${fireDiscardsRemaining} discard${fireDiscardsRemaining === 1 ? "" : "s"} remain for you.`);
     return;
   }
   if (game.currentPlayer !== 0) {
@@ -526,8 +644,8 @@ function renderActions() {
   spellTip.className = `spell-tip element-${spell.className}`;
   spellTipTitle.textContent = `${spell.icon} ${spell.label} spell`;
   spellTipText.textContent = targetingAir && spell.className === "air"
-    ? "Choose a card from an opponent's hand above to steal."
-    : spell.description;
+    ? `Choose a card from an opponent's hand above to steal up to ${simulationSettings.rules.airSteals} of that element.`
+    : spellDescription(card.element);
   spellTip.setAttribute("aria-label", `${spell.label} spell: ${spellTipText.textContent}`);
   $("#action-description").textContent = "";
 
@@ -539,7 +657,7 @@ function renderActions() {
     return;
   }
   addButton("Cast Spell", () => humanCastSelected());
-  addButton("Discard Spell (Draw 1)", discardAndDrawSelected, true);
+  if (discardDrawEnabled) addButton("Discard Spell (Draw 1)", discardAndDrawSelected, true);
 }
 
 function renderActivity() {
@@ -557,6 +675,10 @@ function renderActivity() {
 
 function render() {
   document.body.classList.toggle("in-game", Boolean(game));
+  $("#discard-rule-description").textContent = discardDrawEnabled
+    ? "Otherwise, take exactly one action: cast one card as its spell, or discard one card and draw a replacement."
+    : "Otherwise, cast one card from your hand as its spell.";
+  updateSpellReference();
   if (!game) {
     welcomeScreen.classList.remove("hidden");
     gameScreen.classList.add("hidden");
@@ -626,6 +748,248 @@ function loadGame() {
     return false;
   }
 }
+
+function populateSimulationForm(settings) {
+  $("#sim-matches").value = settings.matches;
+  $("#sim-players").value = settings.players;
+  $("#sim-target").value = settings.target;
+  $("#sim-max-rounds").value = settings.maxRounds;
+  $("#sim-seed").value = settings.seed;
+  $("#sim-strategy").value = settings.strategy;
+  $("#sim-discard-draw").checked = settings.allowDiscardDraw;
+  for (const [element, count] of Object.entries(settings.deck)) {
+    $(`#sim-${element}`).value = count;
+  }
+  $("#sim-rule-global-draw").value = settings.rules.drawAfterAnySpell;
+  $("#sim-rule-fire-discard").value = settings.rules.fireDiscardsPerOpponent;
+  $("#sim-rule-earth-draw").value = settings.rules.earthDraws;
+  $("#sim-rule-water-recover").value = settings.rules.waterRecovers;
+  $("#sim-rule-air-steal").value = settings.rules.airSteals;
+  for (const element of ELEMENT_ORDER) {
+    $(`#sim-rule-${element}-replace`).value = settings.rules.drawAfterSpell[element];
+  }
+  updateSimulationTargetLimit();
+}
+
+function updateSimulationTargetLimit() {
+  const deckTotal = ["fire", "earth", "water", "air"].reduce(
+    (sum, element) => sum + Number($(`#sim-${element}`).value || 0),
+    0,
+  );
+  $("#sim-target").max = String(Math.max(2, deckTotal));
+}
+
+function readSimulationForm() {
+  return {
+    matches: Number($("#sim-matches").value),
+    players: Number($("#sim-players").value),
+    target: Number($("#sim-target").value),
+    maxRounds: Number($("#sim-max-rounds").value),
+    seed: Number($("#sim-seed").value),
+    strategy: $("#sim-strategy").value,
+    allowDiscardDraw: $("#sim-discard-draw").checked,
+    deck: {
+      fire: Number($("#sim-fire").value),
+      earth: Number($("#sim-earth").value),
+      water: Number($("#sim-water").value),
+      air: Number($("#sim-air").value),
+    },
+    rules: readSpellRulesForm(),
+  };
+}
+
+function readSpellRulesForm() {
+  return {
+    drawAfterAnySpell: Number($("#sim-rule-global-draw").value),
+    drawAfterSpell: Object.fromEntries(ELEMENT_ORDER.map((element) => [
+      element,
+      Number($(`#sim-rule-${element}-replace`).value),
+    ])),
+    fireDiscardsPerOpponent: Number($("#sim-rule-fire-discard").value),
+    earthDraws: Number($("#sim-rule-earth-draw").value),
+    waterRecovers: Number($("#sim-rule-water-recover").value),
+    airSteals: Number($("#sim-rule-air-steal").value),
+  };
+}
+
+function syncSpellRules() {
+  const inputs = [...$(".simulation-rules").querySelectorAll("input")];
+  if (inputs.some((input) => !input.checkValidity())) return;
+  simulationSettings = { ...simulationSettings, rules: readSpellRulesForm() };
+  if (!persistSimulationSettings(simulationSettings)) {
+    $("#simulation-status").textContent = "Spell rules could not be saved on this device.";
+  }
+  updateSpellReference();
+  render();
+}
+
+function resetSpellRules() {
+  const defaults = DEFAULT_SPELL_RULES;
+  $("#sim-rule-global-draw").value = defaults.drawAfterAnySpell;
+  $("#sim-rule-fire-discard").value = defaults.fireDiscardsPerOpponent;
+  $("#sim-rule-earth-draw").value = defaults.earthDraws;
+  $("#sim-rule-water-recover").value = defaults.waterRecovers;
+  $("#sim-rule-air-steal").value = defaults.airSteals;
+  for (const element of ELEMENT_ORDER) {
+    $(`#sim-rule-${element}-replace`).value = defaults.drawAfterSpell[element];
+  }
+  syncSpellRules();
+}
+
+function persistSimulationSettings(settings) {
+  simulationSettings = settings;
+  discardDrawEnabled = settings.allowDiscardDraw;
+  try {
+    localStorage.setItem(SIMULATION_SETTINGS_KEY, JSON.stringify(settings));
+    return true;
+  } catch (error) {
+    console.error("Could not save simulation settings.", error);
+    return false;
+  }
+}
+
+function appendMetric(list, label, value) {
+  const entry = document.createElement("div");
+  const term = document.createElement("dt");
+  term.textContent = label;
+  const description = document.createElement("dd");
+  description.textContent = value;
+  entry.append(term, description);
+  list.append(entry);
+}
+
+function renderSimulationResult(summary, title, settings) {
+  const section = document.createElement("section");
+  section.className = "simulation-result";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  const context = document.createElement("p");
+  context.className = "simulation-context";
+  const { rules } = settings;
+  const replacementDraws = `${rules.drawAfterAnySpell} after every spell; extras Fire ${rules.drawAfterSpell.fire}, Earth ${rules.drawAfterSpell.earth}, Water ${rules.drawAfterSpell.water}, Air ${rules.drawAfterSpell.air}`;
+  context.textContent = `${summary.players} players · target ${settings.target} · ${summary.strategy.replaceAll("-", " ")} · cap ${settings.maxRounds} rounds · Fire ${rules.fireDiscardsPerOpponent}/opponent · Earth ${rules.earthDraws} draw · Water ${rules.waterRecovers} recover · Air ${rules.airSteals} steal · spell draws ${replacementDraws}`;
+  const metrics = document.createElement("dl");
+  metrics.className = "simulation-metrics";
+  appendMetric(metrics, "Matches", summary.completed.toLocaleString());
+  appendMetric(metrics, "Wins", `${summary.wins.toLocaleString()} (${(summary.winRate * 100).toFixed(1)}%)`);
+  appendMetric(metrics, "Round cap reached", summary.unresolved.toLocaleString());
+  appendMetric(metrics, "Avg. rounds to win", summary.wins ? summary.averageRoundsToWin.toFixed(1) : "—");
+  appendMetric(metrics, "Avg. rounds per match", summary.averageObservedRounds.toFixed(1));
+  appendMetric(metrics, "Avg. discard/draw actions", summary.averageDiscardDraws.toFixed(2));
+  appendMetric(metrics, "Avg. winner hand size", summary.averageWinnerHandSize.toFixed(2));
+
+  const table = document.createElement("table");
+  table.className = "simulation-table";
+  const head = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  for (const label of ["Element", "Wins", "Win share", "Winner casts", "Casts / match"]) {
+    const cell = document.createElement("th");
+    cell.textContent = label;
+    headerRow.append(cell);
+  }
+  head.append(headerRow);
+  const body = document.createElement("tbody");
+  for (const [element, icon, label] of [
+    ["fire", "🔥", "Fire"],
+    ["earth", "🌿", "Earth"],
+    ["water", "💧", "Water"],
+    ["air", "⚡", "Air"],
+  ]) {
+    const row = document.createElement("tr");
+    const values = [
+      `${icon} ${label}`,
+      summary.winningElements[element].toLocaleString(),
+      summary.wins ? `${(summary.winningElements[element] / summary.wins * 100).toFixed(1)}%` : "—",
+      summary.averageWinnerSpells[element].toFixed(2),
+      summary.averageSpellsPerMatch[element].toFixed(2),
+    ];
+    for (const value of values) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.append(cell);
+    }
+    body.append(row);
+  }
+  table.append(head, body);
+  section.append(heading, context, metrics, table);
+  return section;
+}
+
+async function runSimulationTask(compare = false) {
+  const form = $("#simulation-form");
+  const errorMessage = $("#simulation-error");
+  errorMessage.classList.add("hidden");
+  errorMessage.textContent = "";
+  updateSimulationTargetLimit();
+  if (!form.reportValidity()) return;
+
+  const settings = readSimulationForm();
+  const runButton = $("#run-simulation-button");
+  const compareButton = $("#compare-simulation-button");
+  const status = $("#simulation-status");
+  const results = $("#simulation-results");
+  results.replaceChildren();
+  runButton.disabled = true;
+  compareButton.disabled = true;
+
+  try {
+    if (compare) {
+      for (const allowDiscardDraw of [false, true]) {
+        const variant = { ...settings, allowDiscardDraw };
+        const label = allowDiscardDraw ? "Discard 1, Draw 1 available" : "Discard 1, Draw 1 unavailable";
+        status.textContent = `${label}: 0 / ${settings.matches.toLocaleString()} matches`;
+        const summary = await runSimulation(variant, ({ completed, total }) => {
+          status.textContent = `${label}: ${completed.toLocaleString()} / ${total.toLocaleString()} matches`;
+        });
+        results.append(renderSimulationResult(summary, label, settings));
+      }
+      status.textContent = `Comparison complete · same seed ${settings.seed}`;
+    } else {
+      status.textContent = `Running ${settings.matches.toLocaleString()} matches…`;
+      const summary = await runSimulation(settings, ({ completed, total }) => {
+        status.textContent = `Running ${completed.toLocaleString()} / ${total.toLocaleString()} matches…`;
+      });
+      results.append(renderSimulationResult(
+        summary,
+        settings.allowDiscardDraw ? "Discard 1, Draw 1 available" : "Discard 1, Draw 1 unavailable",
+        settings,
+      ));
+      status.textContent = `Simulation complete · seed ${settings.seed}`;
+    }
+    const saved = persistSimulationSettings(settings);
+    if (!saved) {
+      status.textContent += " · Settings could not be saved on this device.";
+    }
+    render();
+  } catch (error) {
+    console.error("Simulation failed.", error);
+    errorMessage.textContent = error instanceof Error ? error.message : "The simulation failed.";
+    errorMessage.classList.remove("hidden");
+    status.textContent = "Simulation did not complete.";
+  } finally {
+    runButton.disabled = false;
+    compareButton.disabled = false;
+  }
+}
+
+populateSimulationForm(simulationSettings);
+$("#simulation-button").addEventListener("click", () => $("#simulation-dialog").showModal());
+$(".close-simulation-dialog").addEventListener("click", () => $("#simulation-dialog").close());
+$("#simulation-dialog").addEventListener("click", (event) => {
+  if (event.target === $("#simulation-dialog")) $("#simulation-dialog").close();
+});
+$("#sim-discard-draw").addEventListener("change", () => {
+  simulationSettings = { ...simulationSettings, allowDiscardDraw: $("#sim-discard-draw").checked };
+  if (!persistSimulationSettings(simulationSettings)) {
+    $("#simulation-status").textContent = "Settings could not be saved on this device.";
+  }
+  render();
+});
+$(".simulation-deck").addEventListener("input", updateSimulationTargetLimit);
+$(".simulation-rules").addEventListener("input", syncSpellRules);
+$("#reset-spell-rules").addEventListener("click", resetSpellRules);
+$("#run-simulation-button").addEventListener("click", () => runSimulationTask());
+$("#compare-simulation-button").addEventListener("click", () => runSimulationTask(true));
 
 $("#start-button").addEventListener("click", () => newGame());
 $("#new-game-button").addEventListener("click", () => newGame());

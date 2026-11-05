@@ -1,5 +1,5 @@
-const CACHE_NAME = "elemental-altars-v37";
-const APP_SHELL = ["./", "./index.html", "./styles.css", "./game.js", "./manifest.webmanifest", "./icons/icon.svg"];
+const CACHE_NAME = "elemental-altars-v46";
+const APP_SHELL = ["./", "./index.html", "./styles.css", "./game.js", "./simulation.mjs", "./manifest.webmanifest", "./icons/icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));

@@ -12,11 +12,11 @@ Be the first player to collect **7 matching cards of any single element** in you
 
 ## 🃏 Game Setup
 
-1. **The 40-Card Deck contains:**
-* 🔥 **Fire:** 9 Cards
-* 🌿 **Earth:** 10 Cards
-* ⚡ **Air:** 10 Cards
-* 💧 **Water:** 11 Cards
+1. **The 38-Card Deck contains:**
+* 🔥 **Fire:** 10 Cards
+* 🌿 **Earth:** 9 Cards
+* ⚡ **Air:** 9 Cards
+* 💧 **Water:** 10 Cards
 
 
 2. **Deal Starting Hands:** Shuffle the deck and deal **3 face-up cards** to each player.
@@ -39,25 +39,22 @@ Draw **1 card** from the deck and add it to your face-up hand.
 
 > *If drawing this card gives you **7 matching elements**, you immediately win the game!*
 
-### 2. Take ONE Action
+### 2. Cast ONE Spell
 
-Choose **one** of the following actions:
-
-* **Cast 1 Spell:** Play 1 card from your hand face-up onto the discard pile to activate its elemental power (see Spells below).
-* **Discard 1 Card:** If you don't want to cast a spell, discard 1 card from your hand onto the top of the discard pile.
+Play 1 card from your hand face-up onto the discard pile to activate its elemental power (see Spells below). The discard-and-draw action is disabled in this version.
 
 ---
 
 ## ✨ The 4 Elemental Spells
 
-When you play a spell card from your hand to the discard pile, trigger its effect immediately:
+When you play a spell card from your hand to the discard pile, trigger its effect immediately. After resolving the spell, draw 1 replacement card:
 
 | Element | Spell Power |
 | --- | --- |
-| **🌿 Earth** | **Draw 2 Cards:** Draw 2 extra cards from the deck into your hand. |
-| **⚡ Air** | **Steal 1 Card:** Choose 1 opponent and take 1 card from their hand. |
-| **💧 Water** | **Retrieve 1 Card:** Pick up the top card of the discard pile and add it to your hand. *(Played Water spell lands on top of the discard pile after resolving).* |
-| **🔥 Fire** | **Burn All Opponents:** Every opponent must pick **1 card of their choice** from their own hand and put it into the discard pile. *(Starting with the next player until each has discarded - This is to ensure the correct order on the discard pile). |
+| **🌿 Earth** | **Draw 2 Cards:** Draw 2 extra cards from the deck into your hand, then draw the 1 replacement card. |
+| **⚡ Air** | **Steal 1 Card:** Choose 1 opponent and take 1 card from their hand, then draw the 1 replacement card. |
+| **💧 Water** | **Retrieve 2 Cards:** Take up to 2 cards from the top of the discard pile into your hand. The Water spell you played stays on top. Then draw the 1 replacement card. |
+| **🔥 Fire** | **Burn All Opponents:** Each opponent discards 2 cards of their choice, starting with the next player and proceeding in turn order. Then draw the 1 replacement card. |
 
 ---
 
