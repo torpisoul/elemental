@@ -9,12 +9,12 @@ const ELEMENTS = {
   },
   earth: {
     label: "Earth",
-    icon: "🌿",
+    icon: "🌳",
     className: "earth",
   },
   air: {
     label: "Air",
-    icon: "⚡",
+    icon: "🌬️",
     className: "air",
   },
   water: {
@@ -25,11 +25,13 @@ const ELEMENTS = {
 };
 const ELEMENT_ORDER = Object.keys(ELEMENTS);
 const PLAYER_NAMES = ["You", "Ash", "Bramble", "Zephyr"];
+const OPPONENT_SEATS = ["top", "left", "right"];
 const SAVE_KEY = "elemental-game-save-v2";
 const SIMULATION_SETTINGS_KEY = "elemental-simulation-settings-v3";
 const LEGACY_SIMULATION_SETTINGS_KEYS = ["elemental-simulation-settings-v2", "elemental-simulation-settings-v1"];
 
 const $ = (selector) => document.querySelector(selector);
+const compactCardsMedia = window.matchMedia("(max-height: 560px)");
 const welcomeScreen = $("#welcome-screen");
 const gameScreen = $("#game-screen");
 const controlsElement = $("#action-controls");
@@ -99,25 +101,33 @@ let simulationSettings = loadSimulationSettings();
 let game = null;
 let selectedCardId = null;
 let targetingAir = false;
+let discardMode = false;
 let aiTimer = null;
+let spellAnimationUntil = 0;
+let spellResolving = false;
+const incomingCardIds = new Set();
+const animatingDiscardCardIds = new Set();
 let discardDrawEnabled = simulationSettings.allowDiscardDraw;
 
-function spellDescription(element) {
+function spellDescription(element, compact = false) {
   const { rules } = simulationSettings;
   const descriptions = {
     fire: rules.fireDiscardsPerOpponent
-      ? `Every opponent, starting with the next player, chooses ${rules.fireDiscardsPerOpponent} card${rules.fireDiscardsPerOpponent === 2 ? "" : "s"} from their hand to discard.`
-      : "Fire has no discard effect.",
-    earth: `Draw ${rules.earthDraws} card${rules.earthDraws === 2 ? "" : "s"} from the deck.`,
+      ? `Other players drop ${rules.fireDiscardsPerOpponent} card${rules.fireDiscardsPerOpponent === 1 ? "" : "s"}.`
+      : "No effect.",
+    earth: `Draw ${rules.earthDraws} card${rules.earthDraws === 1 ? "" : "s"}.`,
     water: rules.waterRecovers
-      ? `Take up to ${rules.waterRecovers} top card${rules.waterRecovers === 1 ? "" : "s"} from the discard pile. The Water card you played is then placed on top.`
-      : "Water does not recover cards from the discard pile. The Water card you played is placed on top.",
+      ? `Take ${rules.waterRecovers} from discard. Water stays on top.`
+      : "No effect.",
     air: rules.airSteals
-      ? `Choose an opponent and take up to ${rules.airSteals} card${rules.airSteals === 1 ? "" : "s"} of one element from their hand.`
-      : "Air has no steal effect.",
+      ? `Pick a player. Take ${rules.airSteals} card${rules.airSteals === 1 ? "" : "s"} from them.`
+      : "No effect.",
   };
   const extraDraws = rules.drawAfterAnySpell + rules.drawAfterSpell[element];
-  return `${descriptions[element]}${extraDraws ? ` Then draw ${extraDraws} replacement card${extraDraws === 1 ? "" : "s"}.` : ""}`;
+  const replacement = extraDraws
+    ? `${compact ? " Draw" : " Then draw"} ${extraDraws} card${extraDraws === 1 ? "" : "s"}.`
+    : "";
+  return `${descriptions[element]}${replacement}`;
 }
 
 function updateSpellReference() {
@@ -157,6 +167,10 @@ function createPlayer(index) {
 
 function newGame(playerCount = Number($("#player-count").value)) {
   window.clearTimeout(aiTimer);
+  spellAnimationUntil = 0;
+  spellResolving = false;
+  incomingCardIds.clear();
+  animatingDiscardCardIds.clear();
   const players = Array.from({ length: playerCount }, (_, index) => createPlayer(index));
   game = {
     players,
@@ -166,7 +180,11 @@ function newGame(playerCount = Number($("#player-count").value)) {
     turn: 1,
     phase: "draw",
     pendingFireQueue: null,
+    pendingFireLitTargets: [],
+    pendingFireDiscards: simulationSettings.rules.fireDiscardsPerOpponent,
     pendingHumanDiscard: null,
+    pendingHumanDiscardCount: 0,
+    pendingHumanDiscardIds: [],
     pendingFireCasterId: null,
     winner: null,
     log: [],
@@ -174,6 +192,7 @@ function newGame(playerCount = Number($("#player-count").value)) {
   };
   selectedCardId = null;
   targetingAir = false;
+  discardMode = false;
   for (let deal = 0; deal < 3; deal += 1) {
     for (const player of players) drawOne(player);
   }
@@ -216,6 +235,8 @@ function checkForWinner(player) {
   game.phase = "game-over";
   game.pendingFireQueue = null;
   game.pendingHumanDiscard = null;
+  game.pendingHumanDiscardCount = 0;
+  game.pendingHumanDiscardIds = [];
   game.pendingFireCasterId = null;
   addActivity(`${player.name} collected ${simulationSettings.target} ${ELEMENTS[element].label} cards and wins!`, ELEMENTS[element].icon, "win");
   saveGame();
@@ -238,16 +259,40 @@ function startTurn(playerIndex) {
   game.phase = "draw";
   const player = game.players[playerIndex];
   const drawn = drawOne(player);
+  if (drawn) incomingCardIds.add(drawn.id);
   addActivity(drawn
     ? `${player.name} drew 1 card.`
     : `${player.name} could not draw because both piles are empty.`,
   drawn ? ELEMENTS[drawn.element].icon : "—", "draw");
-  if (checkForWinner(player)) return;
-  game.phase = "action";
+  if (checkForWinner(player)) {
+    if (drawn) {
+      void animateDraw(playerIndex, captureFlight($("#draw-pile .deck-card")), drawn.id);
+    }
+    return;
+  }
   selectedCardId = null;
   saveGame();
   render();
-  if (!player.isHuman) scheduleAI();
+  if (!drawn) {
+    game.phase = "action";
+    saveGame();
+    render();
+    if (!player.isHuman) scheduleAI();
+    return;
+  }
+  const source = captureFlight($("#draw-pile .deck-card"));
+  void completeTurnDraw(playerIndex, source);
+}
+
+async function completeTurnDraw(playerIndex, source) {
+  const activeGame = game;
+  const drawn = activeGame.players[playerIndex].hand.at(-1);
+  await animateDraw(playerIndex, source, drawn?.id);
+  if (game !== activeGame || game.currentPlayer !== playerIndex || game.phase !== "draw") return;
+  game.phase = "action";
+  saveGame();
+  render();
+  if (!game.players[playerIndex].isHuman) scheduleAI();
 }
 
 function finishTurn() {
@@ -277,84 +322,296 @@ function opponentsInTurnOrder(playerIndex) {
   );
 }
 
-function castSpell(caster, cardId, targetPlayerIndex = null, targetCardId = null) {
+function waitForAnimation(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function animateElement(element, keyframes, options) {
+  if (typeof element.animate === "function") {
+    const animation = element.animate(keyframes, options);
+    animation.onfinish = () => animation.cancel();
+  } else {
+    element.classList.add("animation-fallback");
+  }
+}
+
+function captureFlight(element) {
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return { node: element.cloneNode(true), rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
+}
+
+function captureCardAt(card, anchorElement) {
+  const rect = anchorElement?.getBoundingClientRect();
+  return rect?.width && rect?.height
+    ? { node: makeCard(card), rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } }
+    : null;
+}
+
+function reserveAnimationTime(milliseconds) {
+  spellAnimationUntil = Math.max(spellAnimationUntil, Date.now() + milliseconds);
+}
+
+function seatHand(index) {
+  const seat = ["bottom", ...OPPONENT_SEATS][index];
+  return seat === "bottom" ? $("#human-hand") : $(`#seat-${seat} .face-up-hand`);
+}
+
+async function animateFlight(snapshot, destination, { duration = 500, deck = false } = {}) {
+  if (!snapshot || !destination || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const targetRect = destination.getBoundingClientRect();
+  if (!targetRect.width || !targetRect.height) return;
+  const isCard = snapshot.node.classList.contains("playing-card");
+  const configuredWidth = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--card-width"));
+  const width = isCard && Number.isFinite(configuredWidth) && configuredWidth > 0
+    ? configuredWidth
+    : snapshot.rect.width;
+  const height = isCard ? width * 1.42 : snapshot.rect.height;
+  const sourceX = snapshot.rect.left + snapshot.rect.width / 2 - width / 2;
+  const sourceY = snapshot.rect.top + snapshot.rect.height / 2 - height / 2;
+  const destinationX = targetRect.left + targetRect.width / 2 - width / 2;
+  const destinationY = targetRect.top + targetRect.height / 2 - height / 2;
+  if (![sourceX, sourceY, destinationX, destinationY, width, height].every(Number.isFinite)) {
+    console.error("Card flight skipped because its measured geometry is invalid.", { source: snapshot.rect, destination: targetRect });
+    return;
+  }
+  const flight = snapshot.node;
+  flight.classList.add(deck ? "deck-flight" : "card-flight");
+  flight.setAttribute("aria-hidden", "true");
+  Object.assign(flight.style, {
+    left: `${sourceX}px`,
+    top: `${sourceY}px`,
+    width: `${width}px`,
+    height: `${height}px`,
+  });
+  document.body.append(flight);
+  animateElement(flight, [
+    { transform: "translate(0, 0) scale(1)" },
+    { transform: `translate(${destinationX - sourceX}px, ${destinationY - sourceY}px) scale(.72)` },
+  ], { duration, easing: "cubic-bezier(.2,.8,.25,1)" });
+  reserveAnimationTime(duration);
+  await waitForAnimation(duration + 20);
+  flight.remove();
+}
+
+async function animateRay(source, target, element, duration = 300) {
+  if (!source || !target || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const sourceRect = source.rect ?? source.getBoundingClientRect();
+  const targetRect = target.rect ?? target.getBoundingClientRect();
+  const targetLeft = targetRect.left ?? targetRect.x;
+  const targetTop = targetRect.top ?? targetRect.y;
+  const sourceX = sourceRect.left + sourceRect.width / 2;
+  const sourceY = sourceRect.top + sourceRect.height / 2;
+  const targetX = targetLeft + targetRect.width / 2;
+  const targetY = targetTop + targetRect.height / 2;
+  if (![sourceX, sourceY, targetX, targetY].every(Number.isFinite)) {
+    console.error("Spell ray skipped because its measured geometry is invalid.", { source: sourceRect, target: targetRect });
+    return;
+  }
+  const angle = Math.atan2(targetY - sourceY, targetX - sourceX);
+  const ray = document.createElement("span");
+  ray.className = `spell-ray element-${ELEMENTS[element].className}`;
+  Object.assign(ray.style, {
+    left: `${sourceX}px`,
+    top: `${sourceY}px`,
+    width: `${Math.hypot(targetX - sourceX, targetY - sourceY)}px`,
+    transform: `rotate(${angle}rad) scaleX(0)`,
+  });
+  document.body.append(ray);
+  animateElement(ray, [
+    { transform: `rotate(${angle}rad) scaleX(0)` },
+    { transform: `rotate(${angle}rad) scaleX(1)` },
+  ], { duration, easing: "ease-out" });
+  reserveAnimationTime(duration);
+  await waitForAnimation(duration + 20);
+  ray.remove();
+}
+
+async function animateDraw(index, source = captureFlight($("#draw-pile .deck-card")), cardId = null) {
+  await animateIncomingCard(source, seatHand(index), cardId, { duration: 650, deck: true });
+}
+
+async function animateIncomingCard(source, destination, cardId, options = {}) {
+  await animateFlight(source, destination, options);
+  if (cardId) {
+    incomingCardIds.delete(cardId);
+    if (game) render();
+  }
+}
+
+async function animateDiscardBatch(entries) {
+  await Promise.all(entries.map(({ source }) =>
+    animateFlight(source, $("#discard-pile"), { duration: 700 }),
+  ));
+  for (const { cardId } of entries) animatingDiscardCardIds.delete(cardId);
+  if (game) render();
+}
+
+async function animateDiscard(snapshot, cardId) {
+  if (!snapshot) {
+    animatingDiscardCardIds.delete(cardId);
+    if (game) render();
+    return;
+  }
+  await animateDiscardBatch([{ source: snapshot, cardId }]);
+}
+
+async function animateAirSteal(stolen, casterIndex, casterName, targetName) {
+  const destination = seatHand(casterIndex);
+  const card = game.players[casterIndex].hand.find((item) => item.id === stolen.cardId);
+  const callout = document.createElement("div");
+  callout.className = "air-steal-callout";
+  callout.textContent = `${casterName} took ${ELEMENTS[card.element].label} from ${targetName}`;
+  document.body.append(callout);
+  animateElement(callout, [
+    { opacity: 0, transform: "translate(-50%, calc(-50% + 8px)) scale(.92)" },
+    { opacity: 1, transform: "translate(-50%, -50%) scale(1)", offset: .18 },
+    { opacity: 1, transform: "translate(-50%, -50%) scale(1)", offset: .78 },
+    { opacity: 0, transform: "translate(-50%, calc(-50% - 5px)) scale(.98)" },
+  ], { duration: 1000, easing: "ease-out" });
+  reserveAnimationTime(1000);
+  await Promise.all([
+    animateRay(stolen.source, destination, "air", 520),
+    animateIncomingCard(stolen.source, destination, stolen.cardId, { duration: 700 }),
+  ]);
+  callout.remove();
+}
+
+async function castSpell(caster, cardId, targetPlayerIndex = null, targetCardId = null) {
   const spellInHand = caster.hand.find((card) => card.id === cardId);
   if (!spellInHand) return false;
+  const sourceCard = document.querySelector(`[data-card-id="${CSS.escape(cardId)}"]`);
+  const spellFlight = captureFlight(sourceCard);
+  const casterIndex = game.players.indexOf(caster);
+  const targetCardElement = targetCardId
+    ? document.querySelector(`[data-card-id="${CSS.escape(targetCardId)}"]`)
+    : null;
+  const targetCardFlight = captureFlight(targetCardElement);
   if (spellInHand.element === "air" && simulationSettings.rules.airSteals > 0 &&
       (targetPlayerIndex !== null || targetCardId !== null)) {
     const target = game.players[targetPlayerIndex];
     if (!target || target === caster || !target.hand.some((card) => card.id === targetCardId)) return false;
   }
+  spellResolving = true;
   const spell = removeFromHand(caster, cardId);
   const element = spell.element;
+  game.discard.push(spell);
+  animatingDiscardCardIds.add(spell.id);
   addActivity(`${caster.name} cast ${ELEMENTS[element].label}.`, ELEMENTS[element].icon, "spell");
 
+  const recoveredFlights = [];
+  const drawFlights = [];
+  const stolenFlights = [];
   if (element === "water") {
-    game.discard.push(spell);
     let recoveredCount = 0;
     for (let recovery = 0; recovery < simulationSettings.rules.waterRecovers && game.discard.length > 1; recovery += 1) {
-      const recovered = game.discard.splice(game.discard.length - 2, 1)[0];
+    const recovered = game.discard.splice(game.discard.length - 2, 1)[0];
+      const source = recoveredCount === 0
+        ? captureFlight($("#discard-top-card .playing-card"))
+        : captureCardAt(recovered, $("#discard-pile"));
+      incomingCardIds.add(recovered.id);
+      recoveredFlights.push({ source, cardId: recovered.id });
       caster.hand.push(recovered);
       recoveredCount += 1;
       addActivity(`${caster.name} took ${ELEMENTS[recovered.element].label} from the top of the discard pile.`, ELEMENTS[recovered.element].icon, "water");
-      if (checkForWinner(caster)) return true;
+      if (checkForWinner(caster)) break;
     }
     if (!recoveredCount) {
       addActivity("Water recovered no cards from the discard pile.", ELEMENTS.water.icon, "water");
     }
-  } else {
-    game.discard.push(spell);
-    if (element === "earth") {
-      for (let draw = 0; draw < simulationSettings.rules.earthDraws; draw += 1) {
-        const card = drawOne(caster);
-        if (!card) break;
-        addActivity(`${caster.name} drew ${ELEMENTS[card.element].label} with Earth.`, ELEMENTS.earth.icon, "earth");
-        if (checkForWinner(caster)) return true;
-      }
-    } else if (element === "air") {
-      if (simulationSettings.rules.airSteals > 0) {
-        const target = game.players[targetPlayerIndex];
-        const firstCard = target?.hand.find((card) => card.id === targetCardId);
-        if (target && firstCard) {
-          for (let steal = 0; steal < simulationSettings.rules.airSteals; steal += 1) {
-            const stolen = steal === 0
-              ? removeFromHand(target, targetCardId)
-              : removeFromHand(target, target.hand.find((card) => card.element === firstCard.element)?.id);
-            if (!stolen) break;
-            caster.hand.push(stolen);
-            addActivity(`${caster.name} took ${ELEMENTS[stolen.element].label} from ${target.name}.`, ELEMENTS.air.icon, "air");
-            if (checkForWinner(caster)) return true;
-          }
-        } else {
-          addActivity("Air found no card to steal.", ELEMENTS.air.icon, "air");
+  } else if (element === "earth") {
+    for (let draw = 0; draw < simulationSettings.rules.earthDraws; draw += 1) {
+      const deckFlight = captureFlight($("#draw-pile .deck-card"));
+      const card = drawOne(caster);
+      if (!card) break;
+      incomingCardIds.add(card.id);
+      drawFlights.push({ source: deckFlight, cardId: card.id });
+      addActivity(`${caster.name} drew ${ELEMENTS[card.element].label} with Earth.`, ELEMENTS.earth.icon, "earth");
+      if (checkForWinner(caster)) break;
+    }
+  } else if (element === "air") {
+    if (simulationSettings.rules.airSteals > 0) {
+      const target = game.players[targetPlayerIndex];
+      const firstCard = target?.hand.find((card) => card.id === targetCardId);
+      if (target && firstCard) {
+        for (let steal = 0; steal < simulationSettings.rules.airSteals; steal += 1) {
+          const stolenCard = steal === 0
+            ? firstCard
+            : target.hand.find((card) => card.element === firstCard.element);
+          if (!stolenCard) break;
+          const stolenFlight = steal === 0
+            ? targetCardFlight
+            : captureFlight(document.querySelector(`[data-card-id="${CSS.escape(stolenCard.id)}"]`));
+          const stolen = removeFromHand(target, stolenCard.id);
+          if (!stolen) break;
+          stolenFlights.push({ source: stolenFlight, cardId: stolen.id, targetName: target.name });
+          incomingCardIds.add(stolen.id);
+          caster.hand.push(stolen);
+          addActivity(`${caster.name} took ${ELEMENTS[stolen.element].label} from ${target.name}.`, ELEMENTS.air.icon, "air");
+          if (checkForWinner(caster)) break;
         }
       } else {
-        addActivity("Air has no steal effect.", ELEMENTS.air.icon, "air");
+        addActivity("Air found no card to steal.", ELEMENTS.air.icon, "air");
       }
-    } else if (element === "fire") {
-      game.pendingFireQueue = Array.from({ length: simulationSettings.rules.fireDiscardsPerOpponent }, () =>
-        opponentsInTurnOrder(game.currentPlayer)).flat();
-      game.pendingFireCasterId = caster.id;
-      game.phase = "fire-discard";
-      processFireQueue();
-      return true;
+    } else {
+      addActivity("Air has no steal effect.", ELEMENTS.air.icon, "air");
     }
+  } else if (element === "fire") {
+    game.pendingFireQueue = simulationSettings.rules.fireDiscardsPerOpponent > 0
+      ? opponentsInTurnOrder(game.currentPlayer)
+      : [];
+    game.pendingFireDiscards = simulationSettings.rules.fireDiscardsPerOpponent;
+    game.pendingFireLitTargets = [];
+    game.pendingFireCasterId = caster.id;
+    game.pendingHumanDiscardIds = [];
+    game.pendingHumanDiscardCount = 0;
+    game.phase = "fire-discard";
+    saveGame();
+    render();
+    await processFireQueue(spellFlight);
+    return true;
   }
 
-  if (drawSpellReplacements(caster, element)) return true;
+  const spellDraws = game.winner ? [] : drawSpellReplacements(caster, element);
+  render();
+  if (element === "water") {
+    for (const recovered of recoveredFlights) {
+      await animateIncomingCard(recovered.source, seatHand(casterIndex), recovered.cardId);
+    }
+    await animateDiscard(spellFlight, spell.id);
+  } else {
+    await animateDiscard(spellFlight, spell.id);
+  }
+  if (element === "earth") {
+    for (const drawn of drawFlights) await animateDraw(casterIndex, drawn.source, drawn.cardId);
+  } else if (element === "air" && stolenFlights.length) {
+    for (const stolen of stolenFlights) {
+      await animateAirSteal(stolen, casterIndex, caster.name, stolen.targetName);
+    }
+  }
+  for (const drawn of spellDraws) await animateDraw(casterIndex, drawn.source, drawn.cardId);
+  spellResolving = false;
+  saveGame();
+  render();
+  if (game.winner) return true;
   finishTurn();
   return true;
 }
 
 function drawSpellReplacements(player, element) {
   const count = simulationSettings.rules.drawAfterAnySpell + simulationSettings.rules.drawAfterSpell[element];
+  const drawFlights = [];
   for (let draw = 0; draw < count; draw += 1) {
+    const source = captureFlight($("#draw-pile .deck-card"));
     const card = drawOne(player);
     if (!card) break;
+    incomingCardIds.add(card.id);
+    drawFlights.push({ source, cardId: card.id });
     addActivity(`${player.name} drew ${ELEMENTS[card.element].label} to replace their ${ELEMENTS[element].label} spell.`, ELEMENTS[element].icon, "draw");
-    if (checkForWinner(player)) return true;
+    if (checkForWinner(player)) break;
   }
-  return false;
+  return drawFlights;
 }
 
 function chooseAIDiscard(player) {
@@ -362,30 +619,99 @@ function chooseAIDiscard(player) {
   return player.hand.find((card) => card.element !== target) ?? player.hand[0] ?? null;
 }
 
-function processFireQueue() {
+async function animateFireImpact(targetIndex) {
+  const seat = $(`#seat-${["bottom", ...OPPONENT_SEATS][targetIndex]}`);
+  if (!seat || seat.hidden) return;
+  const burst = document.createElement("span");
+  const rect = seat.getBoundingClientRect();
+  burst.className = "fire-hit";
+  Object.assign(burst.style, {
+    left: `${rect.left + rect.width / 2 - 25}px`,
+    top: `${rect.top + rect.height / 2 - 25}px`,
+  });
+  document.body.append(burst);
+  animateElement(burst, [
+    { transform: "scale(.2)", opacity: 1 },
+    { transform: "scale(2.2)", opacity: 0 },
+  ], { duration: 520, easing: "ease-out" });
+  reserveAnimationTime(520);
+  await waitForAnimation(540);
+  burst.remove();
+}
+
+async function processFireQueue(spellFlight = null) {
+  const activeGame = game;
+  spellResolving = true;
+  const fireSpellId = spellFlight?.node?.dataset.cardId;
+  if (spellFlight) await animateDiscard(spellFlight, fireSpellId);
+  if (game !== activeGame) return;
   while (game.pendingFireQueue?.length && !game.winner) {
     const targetIndex = game.pendingFireQueue.shift();
     const target = game.players[targetIndex];
     if (!target.hand.length) continue;
 
+    if (!game.pendingFireLitTargets.includes(targetIndex)) {
+      game.pendingFireLitTargets.push(targetIndex);
+      render();
+      const seat = $(`#seat-${["bottom", ...OPPONENT_SEATS][targetIndex]}`);
+      await animateRay($("#discard-pile"), seatHand(targetIndex), "fire", 420);
+      if (game !== activeGame) return;
+      await animateFireImpact(targetIndex);
+      if (game !== activeGame) return;
+    }
+
     if (target.isHuman) {
       game.pendingHumanDiscard = target.id;
+      game.pendingHumanDiscardCount = Math.min(game.pendingFireDiscards, target.hand.length);
+      game.pendingHumanDiscardIds = [];
       game.phase = "defend";
+      spellResolving = false;
       saveGame();
       render();
       return;
     }
 
-    const card = chooseAIDiscard(target);
-    discardCard(target, card.id, "discarded");
+    const discards = [];
+    for (let count = 0; count < Math.min(game.pendingFireDiscards, target.hand.length); count += 1) {
+      const card = chooseAIDiscard(target);
+      const source = captureFlight(document.querySelector(`[data-card-id="${CSS.escape(card.id)}"]`));
+      if (!discardCard(target, card.id, "discarded")) break;
+      animatingDiscardCardIds.add(card.id);
+      discards.push({ source, cardId: card.id });
+    }
+    render();
+    await animateDiscardBatch(discards);
+    if (game !== activeGame) return;
+    game.pendingFireLitTargets = game.pendingFireLitTargets.filter((index) => index !== targetIndex);
+    render();
   }
 
+  for (const targetIndex of game.pendingFireLitTargets) {
+    $(`#seat-${["bottom", ...OPPONENT_SEATS][targetIndex]}`)?.classList.remove("fire-burning");
+  }
+  game.pendingFireLitTargets = [];
   game.pendingFireQueue = null;
   game.pendingHumanDiscard = null;
+  game.pendingHumanDiscardCount = 0;
+  game.pendingHumanDiscardIds = [];
   const caster = game.players.find((player) => player.id === game.pendingFireCasterId);
   game.pendingFireCasterId = null;
-  if (!game.winner && caster && drawSpellReplacements(caster, "fire")) return;
-  if (!game.winner) finishTurn();
+  let spellDraws = [];
+  if (!game.winner && caster) {
+    spellDraws = drawSpellReplacements(caster, "fire");
+    render();
+    for (const drawn of spellDraws) await animateDraw(game.players.indexOf(caster), drawn.source, drawn.cardId);
+  }
+  spellResolving = false;
+  if (game.winner) {
+    saveGame();
+    return;
+  }
+  if (!game.winner) {
+    game.phase = "action";
+    render();
+    finishTurn();
+  }
 }
 
 function chooseAIAction(player) {
@@ -401,7 +727,7 @@ function chooseAIAction(player) {
   return { type: "cast", card: player.hand[0] };
 }
 
-function runAITurn() {
+async function runAITurn() {
   if (game.winner || game.phase !== "action" || game.players[game.currentPlayer].isHuman) return;
   const player = game.players[game.currentPlayer];
   const action = chooseAIAction(player);
@@ -410,12 +736,20 @@ function runAITurn() {
     return;
   }
   if (action.type === "discard") {
-    discardCard(player, action.card.id);
+    const discardFlight = captureFlight(document.querySelector(`[data-card-id="${CSS.escape(action.card.id)}"]`));
+    const drawFlight = captureFlight($("#draw-pile .deck-card"));
+    if (!discardCard(player, action.card.id)) return;
+    animatingDiscardCardIds.add(action.card.id);
     const drawn = drawOne(player);
     if (drawn) {
+      incomingCardIds.add(drawn.id);
       addActivity(`${player.name} drew 1 card after discarding.`, ELEMENTS[drawn.element].icon, "draw");
-      if (checkForWinner(player)) return;
+      checkForWinner(player);
     }
+    render();
+    await animateDiscard(discardFlight, action.card.id);
+    if (drawn) await animateDraw(game.players.indexOf(player), drawFlight, drawn.id);
+    if (game.winner) return;
     finishTurn();
     return;
   }
@@ -427,39 +761,89 @@ function runAITurn() {
     );
     const target = targetIndex === undefined ? null : game.players[targetIndex];
     const stolen = target?.hand.find((card) => card.element === needed);
-    if (target && stolen) castSpell(player, action.card.id, targetIndex, stolen.id);
-    else castSpell(player, action.card.id);
+    if (target && stolen) await castSpell(player, action.card.id, targetIndex, stolen.id);
+    else await castSpell(player, action.card.id);
     return;
   }
-  castSpell(player, action.card.id);
+  await castSpell(player, action.card.id);
 }
 
 function scheduleAI() {
   window.clearTimeout(aiTimer);
+  const animationDelay = Math.max(0, spellAnimationUntil - Date.now());
+  const delay = Math.max(1600, animationDelay + 150);
   aiTimer = window.setTimeout(() => {
     if (!game || game.winner || game.phase !== "action" || game.players[game.currentPlayer].isHuman) return;
-    runAITurn();
-    saveGame();
-    render();
-  }, 450);
+    void runAITurn().then(() => {
+      saveGame();
+      render();
+    }).catch((error) => {
+      console.error("AI turn failed.", error);
+    });
+  }, delay);
 }
 
-function selectHumanCard(cardId) {
+async function selectHumanCard(cardId) {
   if (game.phase === "defend" && game.pendingHumanDiscard === game.players[0].id) {
-    if (!discardCard(game.players[0], cardId, "chose to discard")) return;
+    const selectedIds = game.pendingHumanDiscardIds ??= [];
+    if (selectedIds.includes(cardId)) {
+      game.pendingHumanDiscardIds = selectedIds.filter((id) => id !== cardId);
+      saveGame();
+      render();
+      return;
+    }
+    if (selectedIds.length >= game.pendingHumanDiscardCount) return;
+    selectedIds.push(cardId);
+    if (selectedIds.length < game.pendingHumanDiscardCount) {
+      saveGame();
+      render();
+      return;
+    }
+
+    const player = game.players[0];
+    const discards = selectedIds.map((id) => ({
+      source: captureFlight(document.querySelector(`[data-card-id="${CSS.escape(id)}"]`)),
+      cardId: id,
+    }));
+    for (const { cardId: id } of discards) {
+      if (!discardCard(player, id, "chose to discard")) continue;
+      animatingDiscardCardIds.add(id);
+    }
     game.pendingHumanDiscard = null;
-    processFireQueue();
+    game.pendingHumanDiscardCount = 0;
+    game.pendingHumanDiscardIds = [];
+    game.phase = "fire-discard";
+    spellResolving = true;
+    saveGame();
+    render();
+    await animateDiscardBatch(discards);
+    game.pendingFireLitTargets = (game.pendingFireLitTargets ?? []).filter((index) => index !== 0);
+    render();
+    await processFireQueue();
     saveGame();
     render();
     return;
   }
   if (game.phase !== "action" || game.currentPlayer !== 0) return;
-  selectedCardId = selectedCardId === cardId ? null : cardId;
+  const player = game.players[0];
+  const card = player.hand.find((item) => item.id === cardId);
+  if (!card) return;
+  if (discardMode) {
+    await discardAndDrawCard(cardId);
+    return;
+  }
+  if (card.element === "air" && simulationSettings.rules.airSteals > 0) {
+    selectedCardId = card.id;
+    targetingAir = true;
+    render();
+    return;
+  }
+  selectedCardId = null;
   targetingAir = false;
-  render();
+  await castSpell(player, card.id);
 }
 
-function humanCastSelected(targetPlayerIndex = null, targetCardId = null) {
+async function humanCastSelected(targetPlayerIndex = null, targetCardId = null) {
   if (game.phase !== "action" || game.currentPlayer !== 0) return;
   const spell = game.players[0].hand.find((card) => card.id === selectedCardId);
   if (!spell) return;
@@ -471,28 +855,35 @@ function humanCastSelected(targetPlayerIndex = null, targetCardId = null) {
   }
   selectedCardId = null;
   targetingAir = false;
-  castSpell(game.players[0], spell.id, targetPlayerIndex, targetCardId);
-  saveGame();
-  render();
+  discardMode = false;
+  await castSpell(game.players[0], spell.id, targetPlayerIndex, targetCardId);
 }
 
-function discardAndDrawSelected() {
-  if (!discardDrawEnabled || game.phase !== "action" || game.currentPlayer !== 0 || !selectedCardId) return;
+async function discardAndDrawCard(cardId) {
+  if (!discardDrawEnabled || game.phase !== "action" || game.currentPlayer !== 0) return;
   const player = game.players[0];
-  if (!discardCard(player, selectedCardId)) return;
+  const discardFlight = captureFlight(document.querySelector(`[data-card-id="${CSS.escape(cardId)}"]`));
+  if (!discardCard(player, cardId)) return;
+  animatingDiscardCardIds.add(cardId);
   selectedCardId = null;
   targetingAir = false;
+  discardMode = false;
+  const drawFlight = captureFlight($("#draw-pile .deck-card"));
   const drawn = drawOne(player);
   if (drawn) {
+    incomingCardIds.add(drawn.id);
     addActivity(`You drew ${ELEMENTS[drawn.element].label} after discarding.`, ELEMENTS[drawn.element].icon, "draw");
-    if (checkForWinner(player)) return;
+    checkForWinner(player);
   } else {
     addActivity("You could not draw a replacement because both piles are empty.", "—", "draw");
   }
   saveGame();
-  finishTurn();
-  saveGame();
   render();
+  await animateDiscard(discardFlight, cardId);
+  if (drawn) await animateDraw(0, drawFlight, drawn.id);
+  saveGame();
+  if (game.winner) return;
+  finishTurn();
 }
 
 function showResult() {
@@ -508,93 +899,131 @@ function showResult() {
 
 function makeCard(card, options = {}) {
   const data = ELEMENTS[card.element];
-  const cardElement = document.createElement("span");
+  const cardElement = document.createElement("div");
   cardElement.className = `playing-card element-${data.className}${options.selected ? " selected" : ""}`;
+  cardElement.dataset.cardId = card.id;
   cardElement.setAttribute("aria-hidden", "true");
-  cardElement.innerHTML = `<span class="card-icon">${data.icon}</span><span>${data.label}</span>`;
+  const heading = document.createElement("span");
+  heading.className = "card-heading";
+  const label = document.createElement("strong");
+  label.textContent = data.label;
+  const icon = document.createElement("span");
+  icon.className = "card-icon";
+  icon.textContent = data.icon;
+  heading.append(label);
+  const description = document.createElement("span");
+  description.className = "card-description";
+  description.textContent = spellDescription(
+    card.element,
+    compactCardsMedia.matches,
+  );
+  const footer = document.createElement("span");
+  footer.className = "card-footer";
+  footer.textContent = "ELEMENTAL";
+  cardElement.append(icon, heading, description, footer);
   return cardElement;
 }
 
-function renderHand(player, { human = false, defending = false, opponentIndex = -1 } = {}) {
+function renderHand(player, { human = false, defending = false, opponentIndex = -1, seat = "bottom" } = {}) {
   const hand = document.createElement("div");
-  hand.className = `face-up-hand${human ? " human-hand" : ""}`;
+  hand.className = `face-up-hand${human ? " human-hand" : ""} seat-hand seat-hand-${seat}`;
   hand.setAttribute("aria-label", `${player.name}'s face-up hand`);
 
-  for (const element of ELEMENT_ORDER) {
-    const elementCards = player.hand.filter((card) => card.element === element);
-    if (!elementCards.length) continue;
-    const selected = human && elementCards.some((card) => card.id === selectedCardId);
-    const isAirTarget = !human && targetingAir;
-    const canChoose = human
-      ? defending || game.currentPlayer === 0 && game.phase === "action"
-      : isAirTarget;
-    const stack = document.createElement(canChoose ? "button" : "div");
-    stack.className = `hand-stack element-${ELEMENTS[element].className}${selected ? " selected" : ""}`;
-    if (canChoose) {
-      stack.type = "button";
-      stack.addEventListener("click", () => {
-        if (defending) {
-          selectHumanCard(elementCards[0].id);
-        } else if (human) {
-          selectHumanCard(elementCards[0].id);
-        } else {
-          humanCastSelected(opponentIndex, elementCards[0].id);
-        }
-      });
+  const isSideSeat = seat === "left" || seat === "right";
+  const cardsByElement = isSideSeat
+    ? ELEMENT_ORDER.map((element) => player.hand.filter((card) => card.element === element)).filter((cards) => cards.length)
+    : [player.hand];
+
+  for (const cards of cardsByElement) {
+    const stack = isSideSeat ? document.createElement("div") : hand;
+    if (isSideSeat) {
+      stack.className = `side-card-stack element-${ELEMENTS[cards[0].element].className}`;
+      stack.setAttribute("aria-label", `${cards.length} ${ELEMENTS[cards[0].element].label} card${cards.length === 1 ? "" : "s"}`);
+      hand.append(stack);
     }
-    stack.setAttribute(
-      "aria-label",
-      defending
-        ? `Discard ${ELEMENTS[element].label}`
+    for (const card of cards) {
+      const selected = human && (card.id === selectedCardId ||
+        defending && game.pendingHumanDiscardIds?.includes(card.id));
+      const incoming = incomingCardIds.has(card.id);
+      const isAirTarget = !human && targetingAir;
+      const canChoose = human
+        ? defending || !spellResolving && game.currentPlayer === 0 && game.phase === "action"
+        : isAirTarget && !spellResolving;
+      const cardButton = document.createElement("button");
+      cardButton.className = `hand-card-button${selected ? " selected" : ""}${incoming ? " incoming" : ""}${canChoose ? " interactive" : ""}`;
+      cardButton.type = "button";
+      cardButton.disabled = !canChoose;
+      if (canChoose) {
+        cardButton.addEventListener("click", () => {
+          if (defending || human) {
+            selectHumanCard(card.id);
+          } else {
+            humanCastSelected(opponentIndex, card.id);
+          }
+        });
+      }
+      cardButton.setAttribute("aria-label", defending
+        ? `Discard ${ELEMENTS[card.element].label}`
         : isAirTarget
-          ? `Take ${ELEMENTS[element].label} from ${player.name}`
-          : `${ELEMENTS[element].label} card${elementCards.length === 1 ? "" : "s"}`,
-    );
-    stack.style.setProperty("--stack-size", String(elementCards.length));
-    stack.append(...elementCards.map((card) => makeCard(card, { selected })));
-    hand.append(stack);
+          ? `Take ${ELEMENTS[card.element].label} from ${player.name}`
+          : `${ELEMENTS[card.element].label}: ${spellDescription(card.element)}`);
+      cardButton.append(makeCard(card, { selected }));
+      stack.append(cardButton);
+    }
   }
   return hand;
 }
 
 function renderPlayers() {
-  const container = $("#players");
-  container.classList.toggle("targeting-air", targetingAir);
-  const opponents = game.players.slice(1).map((player, offset) => {
-    const index = offset + 1;
-    const card = document.createElement("article");
+  $("#table-layout").classList.toggle("human-turn", game.currentPlayer === 0 && !game.winner);
+  for (const seat of OPPONENT_SEATS) {
+    const container = $(`#seat-${seat}`);
+    const index = OPPONENT_SEATS.indexOf(seat) + 1;
+    const player = game.players[index];
+    container.hidden = !player;
+    container.replaceChildren();
+    if (!player) continue;
     const active = index === game.currentPlayer && !game.winner;
-    card.className = `player-board opponent-board${active ? " active" : ""}`;
+    container.classList.toggle("active", active);
+    container.classList.toggle("targeting", targetingAir && !player.isHuman);
+    container.classList.toggle("fire-burning", (game.pendingFireLitTargets ?? []).includes(index));
     const heading = document.createElement("div");
     heading.className = "player-heading";
     const name = document.createElement("strong");
     name.textContent = player.name;
     const status = document.createElement("span");
     status.className = "player-status";
-    status.textContent = active ? "PLAYING" : "";
+    status.textContent = active ? "THEIR TURN" : "";
     heading.append(name, status);
-    card.append(heading, renderHand(player, { opponentIndex: index }));
-    return card;
-  });
-  container.replaceChildren(...opponents);
+    container.append(heading, renderHand(player, { opponentIndex: index, seat }));
+  }
 
   const human = game.players[0];
   const humanHandBoard = $("#human-hand-board");
+  humanHandBoard.classList.toggle("active", game.currentPlayer === 0 && !game.winner);
   const defending = game.phase === "defend" && game.pendingHumanDiscard === human.id;
   humanHandBoard.classList.toggle("defending", defending);
-  $("#human-status").textContent = defending ? "CHOOSE A CARD" : "YOUR HAND";
+  humanHandBoard.classList.toggle("fire-burning", (game.pendingFireLitTargets ?? []).includes(0));
+  $("#human-status").textContent = defending
+    ? `CHOOSE ${game.pendingHumanDiscardCount} TO DISCARD`
+    : game.phase === "draw"
+      ? "DRAWING A CARD"
+      : spellResolving && game.currentPlayer === 0
+        ? "RESOLVING SPELL"
+      : discardMode && game.currentPlayer === 0 && game.phase === "action"
+        ? "DISCARD MODE"
+    : game.currentPlayer === 0 && game.phase === "action"
+      ? "YOUR TURN!"
+      : "WAITING";
   const humanHand = $("#human-hand");
   humanHand.classList.toggle("defending-hand", defending);
   humanHand.setAttribute("aria-label", "Your face-up hand");
-  humanHand.replaceChildren(...renderHand(human, { human, defending }).childNodes);
+  humanHand.replaceChildren(...renderHand(human, { human, defending, seat: "bottom" }).childNodes);
 }
 
 function renderActions() {
   controlsElement.replaceChildren();
   const card = game.players[0].hand.find((item) => item.id === selectedCardId);
-  const spellTip = $("#spell-tip");
-  const spellTipTitle = $("#spell-tip-title");
-  const spellTipText = $("#spell-tip-text");
   const addButton = (label, action, secondary = false) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -604,66 +1033,39 @@ function renderActions() {
     controlsElement.append(button);
   };
 
-  $("#step-number").textContent = "YOUR ACTION";
-  $("#action-description").textContent = "";
   if (game.winner) {
-    $("#step-number").textContent = "GAME OVER";
-    spellTip.className = "spell-tip";
-    spellTipTitle.textContent = "The game has ended";
-    spellTipText.textContent = "Start a new game to play again.";
-    spellTip.setAttribute("aria-label", "The game has ended. Start a new game to play again.");
     return;
   }
   if (game.phase === "defend") {
-    const humanIndex = game.players.findIndex((player) => player.id === game.pendingHumanDiscard);
-    const fireDiscardsRemaining = 1 + (game.pendingFireQueue ?? []).filter((index) => index === humanIndex).length;
-    $("#step-number").textContent = "FIRE!";
-    spellTip.className = "spell-tip element-fire";
-    spellTipTitle.textContent = "🔥 Fire: choose a card to discard";
-    spellTipText.textContent = `An opponent cast Fire. Tap a card in your hand to discard it. ${fireDiscardsRemaining} discard${fireDiscardsRemaining === 1 ? "" : "s"} remain for you.`;
-    spellTip.setAttribute("aria-label", `Fire: choose a card to discard. ${fireDiscardsRemaining} discard${fireDiscardsRemaining === 1 ? "" : "s"} remain for you.`);
+    if (!game.pendingHumanDiscard) {
+      $("#human-status").textContent = "FIRE: CARDS IN FLIGHT";
+      return;
+    }
+    const selectedCount = game.pendingHumanDiscardIds?.length ?? 0;
+    $("#human-status").textContent = `FIRE: DISCARD ${selectedCount}/${game.pendingHumanDiscardCount}`;
     return;
   }
-  if (game.currentPlayer !== 0) {
-    $("#step-number").textContent = "OPPONENT TURN";
-    spellTip.className = "spell-tip";
-    spellTipTitle.textContent = "The AI is choosing an action";
-    spellTipText.textContent = "Your turn begins after the other players have played.";
-    spellTip.setAttribute("aria-label", "Opponent turn. The AI is choosing an action.");
+  if (game.currentPlayer !== 0 || spellResolving) return;
+  if (game.phase === "draw") {
+    $("#human-status").textContent = "DRAWING A CARD";
     return;
   }
-
-  if (!card) {
-    spellTip.className = "spell-tip";
-    spellTipTitle.textContent = "Your action";
-    spellTipText.textContent = "Select a card in your hand to see its spell and choose what to do.";
-    const hasCards = game.players[0].hand.length > 0;
-    $("#action-description").textContent = hasCards ? "Your hand is shown below." : "You have no cards to play.";
-    spellTip.setAttribute("aria-label", hasCards
-      ? "Your action. Select a card in your hand to see its spell and choose what to do."
-      : "Your action. You have no cards to play. End your turn.");
-    if (!hasCards) addButton("End turn", finishTurn);
-    return;
-  }
-
-  const spell = ELEMENTS[card.element];
-  spellTip.className = `spell-tip element-${spell.className}`;
-  spellTipTitle.textContent = `${spell.icon} ${spell.label} spell`;
-  spellTipText.textContent = targetingAir && spell.className === "air"
-    ? `Choose a card from an opponent's hand above to steal up to ${simulationSettings.rules.airSteals} of that element.`
-    : spellDescription(card.element);
-  spellTip.setAttribute("aria-label", `${spell.label} spell: ${spellTipText.textContent}`);
-  $("#action-description").textContent = "";
-
-  if (targetingAir && spell.className === "air") {
+  if (game.phase !== "action") return;
+  if (targetingAir && card?.element === "air") {
+    $("#human-status").textContent = "SELECT A CARD TO STEAL";
     addButton("Cancel", () => {
       targetingAir = false;
       render();
     }, true);
-    return;
   }
-  addButton("Cast Spell", () => humanCastSelected());
-  if (discardDrawEnabled) addButton("Discard Spell (Draw 1)", discardAndDrawSelected, true);
+  if (discardDrawEnabled) {
+    addButton(discardMode ? "Cancel discard" : "Discard 1, Draw 1", () => {
+      discardMode = !discardMode;
+      selectedCardId = null;
+      targetingAir = false;
+      render();
+    }, true);
+  }
 }
 
 function renderActivity() {
@@ -699,17 +1101,27 @@ function render() {
     ? `${game.winner.playerName} wins with ${ELEMENTS[game.winner.element].label}.`
     : game.phase === "defend"
       ? "Defend against Fire"
-      : game.currentPlayer === 0
-        ? "Your turn"
+    : game.phase === "draw"
+      ? "Drawing a card"
+    : game.phase === "fire-discard"
+      ? "Fire is resolving"
+    : spellResolving
+      ? "Resolving spell"
+    : game.currentPlayer === 0
+      ? "Your turn"
         : `${game.players[game.currentPlayer].name} is playing`;
   $("#deck-count").textContent = String(game.deck.length);
+  $("#draw-pile .deck-stack").classList.toggle("empty", game.deck.length === 0);
   $("#discard-count").textContent = String(game.discard.length);
+  $("#discard-count-label").textContent = game.discard.length === 1 ? "card" : "cards";
   $("#round-count").textContent = String(game.turn);
   $("#discard-pile").classList.toggle("has-cards", game.discard.length > 0);
   const top = game.discard.at(-1);
   const topCard = $("#discard-top-card");
-  topCard.className = top ? `top-card element-${ELEMENTS[top.element].className}` : "top-card empty";
-  topCard.textContent = top ? `${ELEMENTS[top.element].icon} ${ELEMENTS[top.element].label}` : "Empty";
+  const topIsMoving = top && animatingDiscardCardIds.has(top.id);
+  topCard.className = topIsMoving ? "top-card in-flight" : top ? "top-card" : "top-card empty";
+  topCard.replaceChildren(topIsMoving ? document.createDocumentFragment() :
+    top ? makeCard(top) : document.createTextNode("Empty"));
   renderPlayers();
   renderActions();
   renderActivity();
@@ -744,11 +1156,40 @@ function loadGame() {
       throw new Error("Saved game has an invalid shape.");
     }
     game = parsed;
+    game.pendingFireLitTargets ??= [];
+    game.pendingHumanDiscardIds ??= [];
+    game.pendingHumanDiscardCount ??= 0;
+    if (!Number.isInteger(game.pendingFireDiscards)) {
+      const oldQueue = game.pendingFireQueue ?? [];
+      const frequencies = oldQueue.reduce((counts, index) => {
+        counts[index] = (counts[index] ?? 0) + 1;
+        return counts;
+      }, {});
+      game.pendingFireDiscards = Math.max(1, ...Object.values(frequencies), simulationSettings.rules.fireDiscardsPerOpponent);
+      if (game.phase === "defend" && game.pendingHumanDiscard) {
+        const humanIndex = game.players.findIndex((player) => player.id === game.pendingHumanDiscard);
+        game.pendingHumanDiscardCount = 1 + (frequencies[humanIndex] ?? 0);
+        game.pendingFireQueue = oldQueue.filter((index) => index !== humanIndex);
+      }
+    }
+    if (Array.isArray(game.pendingFireQueue)) {
+      game.pendingFireQueue = [...new Set(game.pendingFireQueue)];
+    }
     game.activity ??= [];
     game.log ??= [];
+    spellResolving = false;
+    incomingCardIds.clear();
+    animatingDiscardCardIds.clear();
     selectedCardId = null;
+    discardMode = false;
     render();
-    if (!game.winner && game.phase !== "defend" && !game.players[game.currentPlayer].isHuman) scheduleAI();
+    if (!game.winner && game.phase === "draw") {
+      void completeTurnDraw(game.currentPlayer, captureFlight($("#draw-pile .deck-card")));
+    } else if (!game.winner && game.phase === "fire-discard") {
+      void processFireQueue();
+    } else if (!game.winner && game.phase !== "defend" && !game.players[game.currentPlayer].isHuman) {
+      scheduleAI();
+    }
     return true;
   } catch (error) {
     console.error("Could not load Elemental game save.", error);
@@ -903,9 +1344,9 @@ function renderSimulationResult(summary, title, settings) {
   const body = document.createElement("tbody");
   for (const [element, icon, label] of [
     ["fire", "🔥", "Fire"],
-    ["earth", "🌿", "Earth"],
+    ["earth", "🌳", "Earth"],
     ["water", "💧", "Water"],
-    ["air", "⚡", "Air"],
+    ["air", "🌬️", "Air"],
   ]) {
     const row = document.createElement("tr");
     const values = [
@@ -985,6 +1426,9 @@ async function runSimulationTask(compare = false) {
 }
 
 populateSimulationForm(simulationSettings);
+compactCardsMedia.addEventListener("change", () => {
+  if (game) render();
+});
 $("#simulation-button").addEventListener("click", () => $("#simulation-dialog").showModal());
 $(".close-simulation-dialog").addEventListener("click", () => $("#simulation-dialog").close());
 $("#simulation-dialog").addEventListener("click", (event) => {

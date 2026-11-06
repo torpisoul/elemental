@@ -54,36 +54,37 @@
           </div>
         </div>
 
-        <section class="table-center" aria-label="Game piles">
-          <div class="table-stat"><span>DRAW PILE</span><strong id="deck-count">28</strong></div>
-          <div class="discard-pile" id="discard-pile">
-            <span class="discard-label">DISCARD TOP</span>
-            <div id="discard-top-card" class="top-card empty">—</div>
-            <small><span id="discard-count">0</span> cards</small>
-          </div>
-          <div class="table-stat"><span>ROUND</span><strong id="round-count">1</strong></div>
-        </section>
-
         <section class="table-activity" id="table-activity" aria-label="Recent game actions">
           <span class="eyebrow">TABLE ACTION</span>
           <ol id="activity-list" aria-live="polite"></ol>
         </section>
 
-        <div class="play-layout">
-          <section class="players" id="players" aria-label="Opponents"></section>
-          <section class="spell-tip" id="spell-tip" aria-live="polite" aria-label="Your action">
-            <span class="action-step" id="step-number">YOUR ACTION</span>
-            <strong id="spell-tip-title">Choose a card</strong>
-            <p id="spell-tip-text">Select a card in your hand to see its spell and choose what to do.</p>
-            <p id="action-description" class="action-description"></p>
-            <div class="action-controls" id="action-controls"></div>
+        <div class="play-layout table-layout" id="table-layout" aria-label="Card table">
+          <section class="player-board opponent-board seat-top" id="seat-top" aria-label="Opponent seated across the table"></section>
+          <section class="player-board opponent-board seat-left" id="seat-left" aria-label="Opponent seated to the left"></section>
+          <section class="table-center" id="table-center" aria-label="Draw and discard piles at the center of the table">
+            <div class="table-piles">
+              <div class="draw-pile" id="draw-pile">
+                <span class="discard-label">DRAW PILE</span>
+                <div class="deck-stack" aria-hidden="true"><div class="deck-card"></div><div class="deck-card"></div></div>
+                <small><span id="deck-count">28</span> cards</small>
+              </div>
+              <div class="discard-pile" id="discard-pile">
+                <span class="discard-label">DISCARD PILE</span>
+                <div id="discard-top-card" class="top-card empty">Empty</div>
+                <small><span id="discard-count">0</span> <span id="discard-count-label">cards</span></small>
+              </div>
+            </div>
+            <div class="table-stat"><span>ROUND</span><strong id="round-count">1</strong></div>
           </section>
-          <section class="human-hand-board player-board human-player" id="human-hand-board" aria-label="Your face-up hand">
+          <section class="player-board opponent-board seat-right" id="seat-right" aria-label="Opponent seated to the right"></section>
+          <section class="human-hand-board player-board human-player seat-bottom" id="human-hand-board" aria-label="Your face-up hand">
             <div class="player-heading">
               <strong>You</strong>
               <span class="player-status" id="human-status">YOUR HAND</span>
             </div>
             <div class="face-up-hand human-hand" id="human-hand"></div>
+            <div class="action-controls" id="action-controls" aria-live="polite"></div>
           </section>
         </div>
       </section>
@@ -102,9 +103,9 @@
       </ol>
       <div class="spell-reference">
         <p><b>🔥 Fire</b><span id="rules-fire-description"></span></p>
-        <p><b>🌿 Earth</b><span id="rules-earth-description"></span></p>
+        <p><b>🌳 Earth</b><span id="rules-earth-description"></span></p>
         <p><b>💧 Water</b><span id="rules-water-description"></span></p>
-        <p><b>⚡ Air</b><span id="rules-air-description"></span></p>
+        <p><b>🌬️ Air</b><span id="rules-air-description"></span></p>
       </div>
       <p class="modal-footnote" id="rules-win-footnote">First player with 5 cards of the same element wins. In this digital playtest, AI opponents choose their own Fire discard; when an AI targets you with Fire, you choose your card.</p>
     </dialog>
@@ -131,21 +132,21 @@
         <fieldset class="simulation-deck">
           <legend>Cards in the deck</legend>
           <label>🔥 Fire<input id="sim-fire" type="number" min="0" max="1000" required /></label>
-          <label>🌿 Earth<input id="sim-earth" type="number" min="0" max="1000" required /></label>
+          <label>🌳 Earth<input id="sim-earth" type="number" min="0" max="1000" required /></label>
           <label>💧 Water<input id="sim-water" type="number" min="0" max="1000" required /></label>
-          <label>⚡ Air<input id="sim-air" type="number" min="0" max="1000" required /></label>
+          <label>🌬️ Air<input id="sim-air" type="number" min="0" max="1000" required /></label>
         </fieldset>
         <fieldset class="simulation-rules">
           <legend>Adjustable spell rules</legend>
           <label>Draw after every spell<input id="sim-rule-global-draw" type="number" min="0" max="10" step="1" required /></label>
           <label>🔥 Fire: discards per opponent<input id="sim-rule-fire-discard" type="number" min="0" max="10" step="1" required /></label>
-          <label>🌿 Earth: cards drawn<input id="sim-rule-earth-draw" type="number" min="0" max="10" step="1" required /></label>
+          <label>🌳 Earth: cards drawn<input id="sim-rule-earth-draw" type="number" min="0" max="10" step="1" required /></label>
           <label>💧 Water: discards recovered<input id="sim-rule-water-recover" type="number" min="0" max="10" step="1" required /></label>
-          <label>⚡ Air: cards stolen<input id="sim-rule-air-steal" type="number" min="0" max="10" step="1" required /></label>
+          <label>🌬️ Air: cards stolen<input id="sim-rule-air-steal" type="number" min="0" max="10" step="1" required /></label>
           <label>🔥 Fire: extra draws after casting<input id="sim-rule-fire-replace" type="number" min="0" max="10" step="1" required /></label>
-          <label>🌿 Earth: extra draws after casting<input id="sim-rule-earth-replace" type="number" min="0" max="10" step="1" required /></label>
+          <label>🌳 Earth: extra draws after casting<input id="sim-rule-earth-replace" type="number" min="0" max="10" step="1" required /></label>
           <label>💧 Water: extra draws after casting<input id="sim-rule-water-replace" type="number" min="0" max="10" step="1" required /></label>
-          <label>⚡ Air: extra draws after casting<input id="sim-rule-air-replace" type="number" min="0" max="10" step="1" required /></label>
+          <label>🌬️ Air: extra draws after casting<input id="sim-rule-air-replace" type="number" min="0" max="10" step="1" required /></label>
           <button class="quiet-button" id="reset-spell-rules" type="button">Restore default spell rules</button>
         </fieldset>
         <label class="simulation-toggle"><input id="sim-discard-draw" type="checkbox" /> Allow “Discard 1, Draw 1”</label>

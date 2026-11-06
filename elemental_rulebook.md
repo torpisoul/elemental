@@ -14,8 +14,8 @@ Be the first player to collect **5 matching cards of any single element** in you
 
 1. **The 39-Card Deck contains:**
 * 🔥 **Fire:** 9 Cards
-* 🌿 **Earth:** 9 Cards
-* ⚡ **Air:** 10 Cards
+* 🌳 **Earth:** 9 Cards
+* 🌬️ **Air:** 10 Cards
 * 💧 **Water:** 11 Cards
 
 
@@ -51,10 +51,10 @@ When you play a spell card from your hand to the discard pile, trigger its effec
 
 | Element | Spell Power |
 | --- | --- |
-| **🌿 Earth** | **Draw 2 Cards:** Draw 2 cards from the deck into your hand. |
-| **⚡ Air** | **Steal 1 Card:** Choose 1 opponent and take 1 card from their hand. |
-| **💧 Water** | **Retrieve 1 Card:** Take the top card of the discard pile into your hand. The Water spell you played stays on top. |
-| **🔥 Fire** | **Burn All Opponents:** Each opponent discards 2 cards of their choice, starting with the next player and proceeding in turn order. Then draw 1 replacement card. |
+| **🌳 Earth** | Draw 2 cards. |
+| **🌬️ Air** | Pick a player. Take 1 card from them. |
+| **💧 Water** | Take 1 card from the discard pile. Water stays on top. |
+| **🔥 Fire** | Other players drop 2 cards. Then draw 1 card. |
 
 ---
 
