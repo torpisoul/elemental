@@ -211,6 +211,7 @@ function newGame(playerCount = Number($("#player-count").value)) {
   }
   addActivity(`A ${playerCount}-player game begins. Everyone receives 3 face-up cards.`, "✦", "setup");
   startTurn(0);
+  $("#rules-dialog").showModal();
 }
 
 function drawOne(player) {
