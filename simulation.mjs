@@ -1,6 +1,7 @@
 import { GAME_CONFIG } from "./game-config.mjs";
 
 export const SIMULATION_ELEMENTS = ["fire", "earth", "water", "air"];
+export const CARD_TYPES = [...SIMULATION_ELEMENTS, "mana"];
 export const DEFAULT_DECK_COUNTS = { ...GAME_CONFIG.deck };
 export const DEFAULT_SPELL_RULES = {
   ...GAME_CONFIG.spells,
@@ -41,24 +42,22 @@ function shuffle(cards, random) {
 }
 
 function elementCounts(player) {
-  return Object.fromEntries(SIMULATION_ELEMENTS.map((element) => [
+  return Object.fromEntries(CARD_TYPES.map((element) => [
     element,
     player.hand.filter((card) => card.element === element).length,
   ]));
 }
 
-function dominantElement(player) {
-  const counts = elementCounts(player);
-  return SIMULATION_ELEMENTS.reduce(
-    (best, element) => counts[element] > counts[best] ? element : best,
-    SIMULATION_ELEMENTS[0],
-  );
+function goalElement() {
+  return "mana";
 }
 
 function leastValuableCardIndex(player) {
   const counts = elementCounts(player);
-  let selectedIndex = 0;
-  for (let index = 1; index < player.hand.length; index += 1) {
+  const firstSpellIndex = player.hand.findIndex((card) => card.element !== "mana");
+  let selectedIndex = firstSpellIndex >= 0 ? firstSpellIndex : 0;
+  for (let index = selectedIndex + 1; index < player.hand.length; index += 1) {
+    if (player.hand[index].element === "mana") continue;
     if (counts[player.hand[index].element] < counts[player.hand[selectedIndex].element]) {
       selectedIndex = index;
     }
@@ -67,7 +66,7 @@ function leastValuableCardIndex(player) {
 }
 
 function validateSettings(settings) {
-  const deckTotal = SIMULATION_ELEMENTS.reduce((sum, element) => sum + settings.deck[element], 0);
+  const deckTotal = CARD_TYPES.reduce((sum, element) => sum + settings.deck[element], 0);
   if (!Number.isInteger(settings.matches) || settings.matches < 1 || settings.matches > 100000) {
     throw new RangeError("Matches must be an integer between 1 and 100,000.");
   }
@@ -98,7 +97,7 @@ function validateSettings(settings) {
       Object.keys(settings.rules.drawAfterSpell).some((element) => !SIMULATION_ELEMENTS.includes(element))) {
     throw new RangeError("Choose supported spell rule settings.");
   }
-  for (const element of SIMULATION_ELEMENTS) {
+  for (const element of CARD_TYPES) {
     if (!Number.isInteger(settings.deck[element]) || settings.deck[element] < 0 || settings.deck[element] > 1000) {
       throw new RangeError(`The ${element} deck count must be an integer from 0 to 1,000.`);
     }
@@ -113,7 +112,7 @@ function validateSettings(settings) {
 
 function simulateMatch(settings, random) {
   let deck = shuffle(
-    SIMULATION_ELEMENTS.flatMap((element) =>
+    CARD_TYPES.flatMap((element) =>
       Array.from({ length: settings.deck[element] }, () => ({ element })),
     ),
     random,
@@ -140,7 +139,7 @@ function simulateMatch(settings, random) {
 
   const winnerElement = (player) => {
     const counts = elementCounts(player);
-    return SIMULATION_ELEMENTS.find((element) => counts[element] >= settings.target) ?? null;
+    return counts.mana >= settings.target ? "mana" : null;
   };
 
   const makeResult = (player, element, turns, won) => ({
@@ -172,7 +171,7 @@ function simulateMatch(settings, random) {
     if (afterDraw) return makeResult(player, afterDraw, turns, true);
     if (!player.hand.length) continue;
 
-    const target = dominantElement(player);
+    const target = goalElement();
     const smartWaterIndex = player.hand.findIndex((card) =>
       card.element === "water" && discard.at(-1)?.element === target,
     );
@@ -208,10 +207,12 @@ function simulateMatch(settings, random) {
     if (settings.strategy === "random") spellIndex = Math.floor(random() * player.hand.length);
     if (spellIndex < 0) spellIndex = leastValuableIndex;
     const [spell] = player.hand.splice(spellIndex, 1);
-    player.spells[spell.element] += 1;
+    if (SIMULATION_ELEMENTS.includes(spell.element)) player.spells[spell.element] += 1;
     discard.push(spell);
 
-    const replacementDraws = settings.rules.drawAfterAnySpell + settings.rules.drawAfterSpell[spell.element];
+    const replacementDraws = spell.element === "mana"
+      ? 0
+      : settings.rules.drawAfterAnySpell + settings.rules.drawAfterSpell[spell.element];
     if (spell.element === "fire") {
       for (let draw = 0; draw < replacementDraws; draw += 1) {
         drawCard(player);
@@ -233,7 +234,7 @@ function simulateMatch(settings, random) {
         if (earthWin) return makeResult(player, earthWin, turns, true);
       }
     } else if (spell.element === "air") {
-      const neededElement = dominantElement(player);
+      const neededElement = goalElement();
       for (let offset = 1; offset < settings.players; offset += 1) {
         const targetPlayer = players[(currentIndex + offset) % settings.players];
         if (!targetPlayer.hand.some((card) => card.element === neededElement)) continue;
@@ -251,7 +252,7 @@ function simulateMatch(settings, random) {
         for (let offset = 1; offset < settings.players; offset += 1) {
           const targetPlayer = players[(currentIndex + offset) % settings.players];
           if (!targetPlayer.hand.length) continue;
-          const targetElement = dominantElement(targetPlayer);
+          const targetElement = goalElement();
           const discardIndex = targetPlayer.hand.findIndex((card) => card.element !== targetElement);
           const [burned] = targetPlayer.hand.splice(discardIndex < 0 ? 0 : discardIndex, 1);
           discard.push(burned);
@@ -305,7 +306,7 @@ function createSummary(settings) {
     totalWinningSetSize: 0,
     totalDiscardDraws: 0,
     totalReshuffles: 0,
-    winningElements: Object.fromEntries(SIMULATION_ELEMENTS.map((element) => [element, 0])),
+    winningElements: { mana: 0 },
     winnerSpells: Object.fromEntries(SIMULATION_ELEMENTS.map((element) => [element, 0])),
     totalSpells: Object.fromEntries(SIMULATION_ELEMENTS.map((element) => [element, 0])),
   };

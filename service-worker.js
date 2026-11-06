@@ -1,4 +1,4 @@
-const CACHE_NAME = "elemental-altars-v60";
+const CACHE_NAME = "elemental-altars-v61";
 const APP_SHELL = ["./", "./index.html", "./styles.css", "./game.js", "./simulation.mjs", "./game-config.mjs", "./manifest.webmanifest", "./icons/icon.svg"];
 
 self.addEventListener("install", (event) => {

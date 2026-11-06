@@ -6,17 +6,18 @@
 
 ## 🎯 Goal of the Game
 
-Be the first player to collect **5 matching cards of any single element** in your face-up hand!
+Be the first player to collect **5 Mana cards** in your face-up hand!
 
 ---
 
 ## 🃏 Game Setup
 
-1. **The 39-Card Deck contains:**
-* 🔥 **Fire:** 9 Cards
-* 🌳 **Earth:** 9 Cards
-* 🌬️ **Air:** 10 Cards
-* 💧 **Water:** 11 Cards
+1. **The 42-card deck contains:**
+* 🔥 **Fire:** 7 cards
+* 🌳 **Earth:** 7 cards
+* 🌬️ **Air:** 7 cards
+* 💧 **Water:** 7 cards
+* 💎 **Mana:** 14 cards
 
 
 2. **Deal Starting Hands:** Shuffle the deck and deal **3 face-up cards** to each player.
@@ -37,15 +38,15 @@ On your turn, perform these steps in order:
 
 Draw **1 card** from the deck and add it to your face-up hand.
 
-> *If drawing this card gives you **5 matching elements**, you immediately win the game!*
+> *If drawing this card gives you **5 Mana cards**, you immediately win the game!*
 
-### 2. Cast ONE Spell
+### 2. Play ONE Card
 
-Play 1 card from your hand face-up onto the discard pile to activate its elemental power (see Spells below). The discard-and-draw action is disabled in this version.
+Play 1 card from your hand face-up onto the discard pile. If it is a spell, activate its power (see Spells below). Mana has no effect when played. The discard-and-draw action is disabled in this version.
 
 ---
 
-## ✨ The 4 Elemental Spells
+## ✨ The Elemental Spells
 
 When you play a spell card from your hand to the discard pile, trigger its effect immediately:
 
@@ -56,11 +57,13 @@ When you play a spell card from your hand to the discard pile, trigger its effec
 | **💧 Water** | Take 1 card from the discard pile. Water stays on top. |
 | **🔥 Fire** | Draw 1 card. Then other players drop 2 cards. |
 
+**💎 Mana has no spell effect. Keep Mana cards in your hand to build toward a win.**
+
 ---
 
 ## 🏆 Winning the Game
 
-The game ends **instantly** the moment a player holds **5 cards of the exact same element** (e.g., 5 Fire, 5 Earth, 5 Water, or 5 Air). That player shouts *"Elemental!"* and wins!
+The game ends **instantly** the moment a player holds **5 Mana cards**. That player shouts *"Elemental!"* and wins!
 
 ---
 

@@ -22,11 +22,17 @@ const ELEMENTS = {
     icon: "💧",
     className: "water",
   },
+  mana: {
+    label: "Mana",
+    icon: "💎",
+    className: "mana",
+  },
 };
 const ELEMENT_ORDER = Object.keys(ELEMENTS);
+const SPELL_ORDER = ELEMENT_ORDER.filter((element) => element !== "mana");
 const PLAYER_NAMES = ["You", "Ash", "Bramble", "Zephyr"];
 const OPPONENT_SEATS = ["top", "left", "right"];
-const SAVE_KEY = "elemental-game-save-v2";
+const SAVE_KEY = "elemental-game-save-v3";
 const SIMULATION_SETTINGS_KEY = "elemental-simulation-settings-v3";
 const LEGACY_SIMULATION_SETTINGS_KEYS = ["elemental-simulation-settings-v2", "elemental-simulation-settings-v1"];
 
@@ -82,7 +88,7 @@ function loadSimulationSettings() {
         Object.keys(settings.deck).some((element) => !Object.hasOwn(DEFAULT_SIMULATION_SETTINGS.deck, element)) ||
         Object.values(settings.deck).some((count) => !Number.isInteger(count) || count < 0 || count > 1000) ||
         Object.keys(settings.rules).some((rule) => !Object.hasOwn(DEFAULT_SPELL_RULES, rule)) ||
-        Object.keys(settings.rules.drawAfterSpell).some((element) => !ELEMENT_ORDER.includes(element)) ||
+        Object.keys(settings.rules.drawAfterSpell).some((element) => !SPELL_ORDER.includes(element)) ||
         Object.values(settings.rules.drawAfterSpell).some((count) => !Number.isInteger(count) || count < 0 || count > 10) ||
         [settings.rules.drawAfterAnySpell, settings.rules.fireDiscardsPerOpponent, settings.rules.earthDraws,
           settings.rules.waterRecovers, settings.rules.airSteals]
@@ -123,7 +129,9 @@ function spellDescription(element, compact = false) {
     air: rules.airSteals
       ? `Pick a player. Take ${rules.airSteals} card${rules.airSteals === 1 ? "" : "s"} from them.`
       : "No effect.",
+    mana: "No effect. Keep it to win.",
   };
+  if (element === "mana") return descriptions.mana;
   const extraDraws = rules.drawAfterAnySpell + rules.drawAfterSpell[element];
   const replacement = extraDraws
     ? `${compact ? " Draw" : " Then draw"} ${extraDraws} card${extraDraws === 1 ? "" : "s"}.`
@@ -136,14 +144,14 @@ function spellDescription(element, compact = false) {
 }
 
 function updateSpellReference() {
-  for (const element of ELEMENT_ORDER) {
+  for (const element of SPELL_ORDER) {
     const description = $(`#rules-${element}-description`);
     if (description) description.textContent = spellDescription(element);
   }
   $("#win-rule-description").textContent =
-    `On your turn, draw 1 card. If you now have ${simulationSettings.target} of one element, you win immediately.`;
+    `On your turn, draw 1 card. If you now have ${simulationSettings.target} Mana cards, you win immediately.`;
   $("#rules-win-footnote").textContent =
-    `First player with ${simulationSettings.target} cards of the same element wins. In this digital playtest, AI opponents choose their own Fire discard; when an AI targets you with Fire, you choose your card.`;
+    `First player with ${simulationSettings.target} Mana cards wins. Mana has no spell effect. In this digital playtest, AI opponents choose their own Fire discard; when an AI targets you with Fire, you choose your card.`;
 }
 
 function createDeck() {
@@ -217,20 +225,12 @@ function drawOne(player) {
   return card;
 }
 
-function elementCounts(player) {
-  return Object.fromEntries(ELEMENT_ORDER.map((element) => [
-    element,
-    player.hand.filter((card) => card.element === element).length,
-  ]));
-}
-
-function dominantElement(player) {
-  const counts = elementCounts(player);
-  return ELEMENT_ORDER.reduce((best, element) => counts[element] > counts[best] ? element : best, ELEMENT_ORDER[0]);
+function goalElement() {
+  return "mana";
 }
 
 function winningElement(player) {
-  return ELEMENT_ORDER.find((element) => player.hand.filter((card) => card.element === element).length >= simulationSettings.target) ?? null;
+  return player.hand.filter((card) => card.element === "mana").length >= simulationSettings.target ? "mana" : null;
 }
 
 function checkForWinner(player) {
@@ -542,7 +542,13 @@ async function castSpell(caster, cardId, targetPlayerIndex = null, targetCardId 
   const element = spell.element;
   game.discard.push(spell);
   animatingDiscardCardIds.add(spell.id);
-  addActivity(`${caster.name} cast ${ELEMENTS[element].label}.`, ELEMENTS[element].icon, "spell");
+  addActivity(
+    element === "mana"
+      ? `${caster.name} played Mana. It has no spell effect.`
+      : `${caster.name} cast ${ELEMENTS[element].label}.`,
+    ELEMENTS[element].icon,
+    element === "mana" ? "action" : "spell",
+  );
 
   const recoveredFlights = [];
   const drawFlights = [];
@@ -645,6 +651,7 @@ async function castSpell(caster, cardId, targetPlayerIndex = null, targetCardId 
 }
 
 function drawSpellReplacements(player, element) {
+  if (element === "mana") return [];
   const count = simulationSettings.rules.drawAfterAnySpell + simulationSettings.rules.drawAfterSpell[element];
   const drawFlights = [];
   for (let draw = 0; draw < count; draw += 1) {
@@ -660,7 +667,7 @@ function drawSpellReplacements(player, element) {
 }
 
 function chooseAIDiscard(player) {
-  const target = dominantElement(player);
+  const target = goalElement();
   return player.hand.find((card) => card.element !== target) ?? player.hand[0] ?? null;
 }
 
@@ -763,7 +770,7 @@ async function processFireQueue(spellFlight = null, fireDraws = []) {
 
 function chooseAIAction(player) {
   if (!player.hand.length) return { type: "pass" };
-  const targetElement = dominantElement(player);
+  const targetElement = goalElement();
   const water = player.hand.find((card) => card.element === "water");
   if (water && game.discard.at(-1)?.element === targetElement) {
     return { type: "cast", card: water };
@@ -802,7 +809,7 @@ async function runAITurn() {
   }
 
   if (action.card.element === "air" && simulationSettings.rules.airSteals > 0) {
-    const needed = dominantElement(player);
+    const needed = goalElement();
     const targetIndex = opponentsInTurnOrder(game.currentPlayer).find((index) =>
       game.players[index].hand.some((card) => card.element === needed),
     );
@@ -1118,10 +1125,10 @@ function renderActions() {
 function render() {
   document.body.classList.toggle("in-game", Boolean(game));
   $("#welcome-copy").textContent =
-    `Collect ${simulationSettings.target} cards of one element in your face-up hand to win. Cast a spell to help your set or disrupt the other players.`;
+    `Collect ${simulationSettings.target} Mana cards in your face-up hand to win. Cast spells to help your set or disrupt the other players. Mana has no effect.`;
   $("#discard-rule-description").textContent = discardDrawEnabled
-    ? "Otherwise, take exactly one action: cast one card as its spell, or discard one card and draw a replacement."
-    : "Otherwise, cast one card from your hand as its spell.";
+    ? "Otherwise, play one card (spells have effects; Mana does not), or discard one card and draw a replacement."
+    : "Otherwise, play one card from your hand. Spells have effects; Mana does not.";
   updateSpellReference();
   if (!game) {
     $("#new-game-button").hidden = true;
@@ -1250,14 +1257,14 @@ function populateSimulationForm(settings) {
   $("#sim-rule-earth-draw").value = settings.rules.earthDraws;
   $("#sim-rule-water-recover").value = settings.rules.waterRecovers;
   $("#sim-rule-air-steal").value = settings.rules.airSteals;
-  for (const element of ELEMENT_ORDER) {
+  for (const element of SPELL_ORDER) {
     $(`#sim-rule-${element}-replace`).value = settings.rules.drawAfterSpell[element];
   }
   updateSimulationTargetLimit();
 }
 
 function updateSimulationTargetLimit() {
-  const deckTotal = ["fire", "earth", "water", "air"].reduce(
+  const deckTotal = ELEMENT_ORDER.reduce(
     (sum, element) => sum + Number($(`#sim-${element}`).value || 0),
     0,
   );
@@ -1279,6 +1286,7 @@ function readSimulationForm() {
       earth: Number($("#sim-earth").value),
       water: Number($("#sim-water").value),
       air: Number($("#sim-air").value),
+      mana: Number($("#sim-mana").value),
     },
     rules: readSpellRulesForm(),
   };
@@ -1287,7 +1295,7 @@ function readSimulationForm() {
 function readSpellRulesForm() {
   return {
     drawAfterAnySpell: Number($("#sim-rule-global-draw").value),
-    drawAfterSpell: Object.fromEntries(ELEMENT_ORDER.map((element) => [
+    drawAfterSpell: Object.fromEntries(SPELL_ORDER.map((element) => [
       element,
       Number($(`#sim-rule-${element}-replace`).value),
     ])),
@@ -1316,7 +1324,7 @@ function resetSpellRules() {
   $("#sim-rule-earth-draw").value = defaults.earthDraws;
   $("#sim-rule-water-recover").value = defaults.waterRecovers;
   $("#sim-rule-air-steal").value = defaults.airSteals;
-  for (const element of ELEMENT_ORDER) {
+  for (const element of SPELL_ORDER) {
     $(`#sim-rule-${element}-replace`).value = defaults.drawAfterSpell[element];
   }
   syncSpellRules();
@@ -1367,40 +1375,45 @@ function renderSimulationResult(summary, title, settings) {
   appendMetric(metrics, "Avg. discard/draw actions", summary.averageDiscardDraws.toFixed(2));
   appendMetric(metrics, "Avg. winner hand size", summary.averageWinnerHandSize.toFixed(2));
 
-  const table = document.createElement("table");
-  table.className = "simulation-table";
-  const head = document.createElement("thead");
-  const headerRow = document.createElement("tr");
-  for (const label of ["Element", "Wins", "Win share", "Winner casts", "Casts / match"]) {
-    const cell = document.createElement("th");
-    cell.textContent = label;
-    headerRow.append(cell);
-  }
-  head.append(headerRow);
-  const body = document.createElement("tbody");
-  for (const [element, icon, label] of [
-    ["fire", "🔥", "Fire"],
-    ["earth", "🌳", "Earth"],
-    ["water", "💧", "Water"],
-    ["air", "🌬️", "Air"],
-  ]) {
-    const row = document.createElement("tr");
-    const values = [
-      `${icon} ${label}`,
-      summary.winningElements[element].toLocaleString(),
-      summary.wins ? `${(summary.winningElements[element] / summary.wins * 100).toFixed(1)}%` : "—",
-      summary.averageWinnerSpells[element].toFixed(2),
-      summary.averageSpellsPerMatch[element].toFixed(2),
-    ];
-    for (const value of values) {
-      const cell = document.createElement("td");
-      cell.textContent = value;
-      row.append(cell);
+  const tables = [];
+  const appendTable = (title, columns, rows) => {
+    const tableHeading = document.createElement("h4");
+    tableHeading.textContent = title;
+    const table = document.createElement("table");
+    table.className = "simulation-table";
+    const head = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    for (const label of columns) {
+      const cell = document.createElement("th");
+      cell.textContent = label;
+      headerRow.append(cell);
     }
-    body.append(row);
-  }
-  table.append(head, body);
-  section.append(heading, context, metrics, table);
+    head.append(headerRow);
+    const body = document.createElement("tbody");
+    for (const values of rows) {
+      const row = document.createElement("tr");
+      for (const value of values) {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        row.append(cell);
+      }
+      body.append(row);
+    }
+    table.append(head, body);
+    tables.push(tableHeading, table);
+  };
+  appendTable("Winning card", ["Card", "Wins", "Win share"], [[
+    "💎 Mana",
+    summary.winningElements.mana.toLocaleString(),
+    summary.wins ? `${(summary.winningElements.mana / summary.wins * 100).toFixed(1)}%` : "—",
+  ]]);
+  appendTable("Spell activity", ["Spell", "Winner casts / match", "Casts / match"], [
+    ["🔥 Fire", summary.averageWinnerSpells.fire.toFixed(2), summary.averageSpellsPerMatch.fire.toFixed(2)],
+    ["🌳 Earth", summary.averageWinnerSpells.earth.toFixed(2), summary.averageSpellsPerMatch.earth.toFixed(2)],
+    ["💧 Water", summary.averageWinnerSpells.water.toFixed(2), summary.averageSpellsPerMatch.water.toFixed(2)],
+    ["🌬️ Air", summary.averageWinnerSpells.air.toFixed(2), summary.averageSpellsPerMatch.air.toFixed(2)],
+  ]);
+  section.append(heading, context, metrics, ...tables);
   return section;
 }
 

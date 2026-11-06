@@ -31,7 +31,7 @@
         <p class="eyebrow">A quick game of sets &amp; spells</p>
         <h1 id="welcome-heading">Collect your set.<br /><span>Become Elemental.</span></h1>
         <p class="welcome-copy" id="welcome-copy">
-          Collect 5 cards of one element in your face-up hand to win. Cast a spell to help your set
+          Collect 5 Mana cards in your face-up hand to win. Cast spells to help your set
           or disrupt the other players.
         </p>
         <label class="player-count-label" for="player-count">Players</label>
@@ -55,7 +55,7 @@
               <div class="draw-pile" id="draw-pile">
                 <span class="discard-label">DRAW PILE</span>
                 <div class="deck-stack" aria-hidden="true"><div class="deck-card"></div><div class="deck-card"></div></div>
-                <small><span id="deck-count">28</span> cards</small>
+                <small><span id="deck-count">42</span> cards</small>
               </div>
               <div class="discard-pile" id="discard-pile">
                 <span class="discard-label">DISCARD PILE</span>
@@ -85,8 +85,8 @@
       </div>
       <ol class="rules-list">
         <li>Everyone keeps their hand face-up. Deal 3 cards to each player.</li>
-        <li id="win-rule-description">On your turn, draw 1 card. If you now have 7 of one element, you win immediately.</li>
-        <li id="discard-rule-description">Otherwise, take exactly one action: cast one card as its spell, or discard one card and draw a replacement.</li>
+        <li id="win-rule-description">On your turn, draw 1 card. If you now have 5 Mana cards, you win immediately.</li>
+        <li id="discard-rule-description">Otherwise, play one card. Spells have effects; Mana does not.</li>
         <li>Your turn ends after that action. Shuffle the discard pile if the draw pile runs out.</li>
       </ol>
       <div class="spell-reference">
@@ -94,8 +94,9 @@
         <p><b>🌳 Earth</b><span id="rules-earth-description"></span></p>
         <p><b>💧 Water</b><span id="rules-water-description"></span></p>
         <p><b>🌬️ Air</b><span id="rules-air-description"></span></p>
+        <p><b>💎 Mana</b><span id="rules-mana-description">No effect. Keep it to win.</span></p>
       </div>
-      <p class="modal-footnote" id="rules-win-footnote">First player with 5 cards of the same element wins. In this digital playtest, AI opponents choose their own Fire discard; when an AI targets you with Fire, you choose your card.</p>
+      <p class="modal-footnote" id="rules-win-footnote">First player with 5 Mana cards wins. Mana has no spell effect. In this digital playtest, AI opponents choose their own Fire discard; when an AI targets you with Fire, you choose your card.</p>
     </dialog>
 
     <dialog id="simulation-dialog" class="modal simulation-modal">
@@ -123,6 +124,7 @@
           <label>🌳 Earth<input id="sim-earth" type="number" min="0" max="1000" required /></label>
           <label>💧 Water<input id="sim-water" type="number" min="0" max="1000" required /></label>
           <label>🌬️ Air<input id="sim-air" type="number" min="0" max="1000" required /></label>
+          <label>💎 Mana<input id="sim-mana" type="number" min="0" max="1000" required /></label>
         </fieldset>
         <fieldset class="simulation-rules">
           <legend>Adjustable spell rules</legend>

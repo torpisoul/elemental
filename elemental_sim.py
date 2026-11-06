@@ -4,15 +4,15 @@ import pandas as pd
 # =====================================================================
 # ⚙️ GAME CONFIGURATION (DEFENDER-CHOICE FIRE LOGIC)
 # =====================================================================
-ELEMENTS = ['FIRE', 'EARTH', 'WATER', 'AIR']
+ELEMENTS = ['FIRE', 'EARTH', 'WATER', 'AIR', 'MANA']
 DECK_COMPOSITION = {
-    'FIRE': 9,
-    'EARTH': 10,
-    'WATER': 11,
-    'AIR': 10
+    'FIRE': 7,
+    'EARTH': 7,
+    'WATER': 7,
+    'AIR': 7,
+    'MANA': 14,
 }
-TARGET_MATCHING_CARDS = 7  # Win condition: Collect 7 of 1 single element
-MAX_HAND_SIZE = 100
+TARGET_MATCHING_CARDS = 5  # Win condition: Collect 5 Mana cards
 
 class Card:
     def __init__(self, element):
@@ -40,12 +40,10 @@ class Player:
         return counts
 
     def highest_element_count(self):
-        counts = self.element_counts()
-        return max(counts.values()) if counts else 0
+        return self.element_counts()['MANA']
 
     def target_element(self):
-        counts = self.element_counts()
-        return max(counts, key=counts.get)
+        return 'MANA'
 
 # =====================================================================
 # 🎮 SIMULATION ENGINE
@@ -100,7 +98,7 @@ class KidGameSim:
         if player.highest_element_count() >= TARGET_MATCHING_CARDS:
             return
 
-        # 2. PLAY 1 SPELL OR TRASH 1 CARD
+        # 2. PLAY 1 CARD
         target_elem = player.target_element()
         opponents = [o for o in self.players if o.pid != player.pid]
 
@@ -117,21 +115,19 @@ class KidGameSim:
 
         if spell_card:
             player.hand.remove(spell_card)
-            player.spells_cast[spell_card.element] += 1
+            if spell_card.element in player.spells_cast:
+                player.spells_cast[spell_card.element] += 1
             self.resolve_spell(player, spell_card, opponents)
-
-        elif len(player.hand) > MAX_HAND_SIZE:
-            counts = player.element_counts()
-            least_elem = min(counts, key=counts.get)
-            trash_candidates = [c for c in player.hand if c.element == least_elem]
-            if trash_candidates:
-                to_trash = trash_candidates[0]
-                player.hand.remove(to_trash)
-                self.discard.append(to_trash)
-                player.trashed_count += 1
+        elif player.hand:
+            mana_card = player.hand.pop(0)
+            self.resolve_spell(player, mana_card, opponents)
 
     def resolve_spell(self, caster, spell_card, opponents):
         element = spell_card.element
+
+        if element == 'MANA':
+            self.discard.append(spell_card)
+            return
 
         # 1. WATER: Retrieve visible top card from discard BEFORE played card lands
         if element == 'WATER':
@@ -211,9 +207,9 @@ if __name__ == "__main__":
     print("\n" + "="*65)
     print("📊 DEFENDER-CHOICE FIRE SIMULATION REPORT")
     print("="*65)
-    print(f"• Win Condition:             First to {TARGET_MATCHING_CARDS} of 1 Element")
+    print(f"• Win Condition:             First to {TARGET_MATCHING_CARDS} Mana cards")
     print(f"• Average Match Duration:    {df['turns'].mean():.2f} rounds (~{df['turns'].mean() * 4:.1f} total turns)")
-    print(f"\n• Winning Element Balance:\n{df['winning_element'].value_counts(normalize=True) * 100}\n")
+    print(f"\n• Mana Win Share:\n{df['winning_element'].value_counts(normalize=True) * 100}\n")
     print("• AVERAGE SPELLS CAST BY WINNER PER GAME:")
     print(f"   🔥 Fire (All): {df['fire_casts'].mean():.2f}")
     print(f"   🌿 Earth:      {df['earth_casts'].mean():.2f}")

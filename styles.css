@@ -14,6 +14,7 @@
   --earth: #97ad73;
   --air: #50adff;
   --water: #73b5bd;
+  --mana: #ba91ed;
   --mono: "DM Mono", monospace;
   --card-width: clamp(88px, 8.6vw, 138px);
   --card-height: calc(var(--card-width) * 1.42);
@@ -116,6 +117,7 @@ h1, h2, p { margin-top: 0; }
 .element-air { --card-description-bg: rgb(220 236 244 / 87%); border-color: #8ed8ff; background: linear-gradient(145deg, #176bb3, #103766 70%); }
 .element-air .card-icon { opacity: .78; filter: saturate(2.4) drop-shadow(0 2px 6px #001c2dcc); }
 .element-water { --card-description-bg: rgb(220 239 235 / 87%); border-color: #56d2c4; background: linear-gradient(145deg, #147d78, #104642 70%); }
+.element-mana { --card-description-bg: rgb(235 224 246 / 90%); border-color: #c6a5ed; background: linear-gradient(145deg, #7951a0, #3e2855 70%); }
 .top-card.in-flight { border-radius: 8px; background: radial-gradient(circle, #d7b86d22, transparent 70%); }
 .spell-impact { z-index: 4; animation: seat-impact .32s ease-out; }
 .impact-fire { border-color: var(--fire); box-shadow: 0 0 24px #e77652aa; }
@@ -130,6 +132,7 @@ h1, h2, p { margin-top: 0; }
 .spell-ray.element-earth { color: var(--earth); }
 .spell-ray.element-water { color: var(--water); }
 .spell-ray.element-air { color: var(--air); }
+.spell-ray.element-mana { color: var(--mana); }
 .spell-ray.element-fire { height: 5px; background: linear-gradient(90deg, #ffce75, #f34d2b); box-shadow: 0 0 16px #ff5733; }
 .spell-ray.element-air { height: 8px; background: linear-gradient(90deg, #c8f4ff, #4cb5ff); box-shadow: 0 0 18px #65c9ff, 0 0 34px #2b92ff; }
 .air-steal-callout { position: fixed; z-index: 1002; top: 50%; left: 50%; width: max-content; max-width: min(90vw, 420px); padding: 10px 16px; border: 2px solid #9de7ff; border-radius: 999px; background: #0c2e49ee; box-shadow: 0 0 24px #42bbff99; color: #f6fcff; font: 700 14px var(--mono); letter-spacing: .04em; text-align: center; pointer-events: none; }
@@ -171,6 +174,7 @@ h1, h2, p { margin-top: 0; }
 .simulation-results { display: grid; gap: 12px; margin-top: 8px; }
 .simulation-result { padding: 12px; overflow-x: auto; border: 1px solid var(--line); border-radius: 7px; background: #172020; }
 .simulation-result h3 { margin: 0 0 9px; color: #e6d9ac; font: 600 15px "Playfair Display", Georgia, serif; }
+.simulation-result h4 { margin: 12px 0 4px; color: #c8d0c8; font-size: 10px; font-weight: 600; }
 .simulation-context { margin: -4px 0 9px; color: #87958d; font-size: 9px; }
 .simulation-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
 .simulation-metrics div { display: grid; gap: 3px; }

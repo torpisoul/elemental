@@ -2,7 +2,7 @@
 
 ## Current game
 
-The current permanent balance defaults are in [game-config.mjs](./game-config.mjs); the tabletop rules are documented in [elemental_rulebook.md](./elemental_rulebook.md). The PWA supports 2–4 total players: one human and up to three AI opponents. All hands are face-up, and the first player to hold 5 cards of one element wins.
+The current permanent balance defaults are in [game-config.mjs](./game-config.mjs); the tabletop rules are documented in [elemental_rulebook.md](./elemental_rulebook.md). The PWA supports 2–4 total players: one human and up to three AI opponents. All hands are face-up, and the first player to hold 5 Mana cards wins.
 
 ## Implementation
 
