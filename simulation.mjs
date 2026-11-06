@@ -211,6 +211,15 @@ function simulateMatch(settings, random) {
     player.spells[spell.element] += 1;
     discard.push(spell);
 
+    const replacementDraws = settings.rules.drawAfterAnySpell + settings.rules.drawAfterSpell[spell.element];
+    if (spell.element === "fire") {
+      for (let draw = 0; draw < replacementDraws; draw += 1) {
+        drawCard(player);
+        const replacementWin = winnerElement(player);
+        if (replacementWin) return makeResult(player, replacementWin, turns, true);
+      }
+    }
+
     if (spell.element === "water") {
       for (let recovery = 0; recovery < settings.rules.waterRecovers && discard.length > 1; recovery += 1) {
         player.hand.push(discard.splice(discard.length - 2, 1)[0]);
@@ -250,11 +259,12 @@ function simulateMatch(settings, random) {
       }
     }
 
-    const replacementDraws = settings.rules.drawAfterAnySpell + settings.rules.drawAfterSpell[spell.element];
-    for (let draw = 0; draw < replacementDraws; draw += 1) {
-      drawCard(player);
-      const replacementWin = winnerElement(player);
-      if (replacementWin) return makeResult(player, replacementWin, turns, true);
+    if (spell.element !== "fire") {
+      for (let draw = 0; draw < replacementDraws; draw += 1) {
+        drawCard(player);
+        const replacementWin = winnerElement(player);
+        if (replacementWin) return makeResult(player, replacementWin, turns, true);
+      }
     }
 
     const afterSpell = winnerElement(player);

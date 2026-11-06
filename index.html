@@ -19,7 +19,11 @@
         </a>
         <div class="topbar-tools">
           <button class="icon-button" id="simulation-button" type="button" aria-label="Open simulation lab" title="Simulation lab">∑</button>
-          <button class="icon-button" id="rules-button" type="button" aria-label="Open rules">?</button>
+          <button class="icon-button" id="rules-button" type="button" aria-label="Open rules" title="Help">?</button>
+          <button class="icon-button log-button" id="log-button" type="button" aria-label="Open game log" title="Game log" hidden>
+            <span aria-hidden="true">☷</span><span class="log-count-badge" id="log-count">0</span>
+          </button>
+          <button class="quiet-button" id="new-game-button" type="button" hidden>New game</button>
         </div>
       </header>
 
@@ -41,23 +45,7 @@
       </section>
 
       <section class="game-screen hidden" id="game-screen" aria-live="polite">
-        <div class="game-heading">
-          <div>
-            <p class="eyebrow" id="turn-label">ROUND 1</p>
-            <h1 id="phase-title">Your turn</h1>
-          </div>
-          <div class="game-heading-actions">
-            <button class="icon-button log-button" id="log-button" type="button" aria-label="Open game log" title="Game log">
-              <span aria-hidden="true">☷</span><span class="log-count-badge" id="log-count">0</span>
-            </button>
-            <button class="quiet-button" id="new-game-button" type="button">New game</button>
-          </div>
-        </div>
-
-        <section class="table-activity" id="table-activity" aria-label="Recent game actions">
-          <span class="eyebrow">TABLE ACTION</span>
-          <ol id="activity-list" aria-live="polite"></ol>
-        </section>
+        <p class="sr-only" id="phase-title" aria-live="polite"></p>
 
         <div class="play-layout table-layout" id="table-layout" aria-label="Card table">
           <section class="player-board opponent-board seat-top" id="seat-top" aria-label="Opponent seated across the table"></section>

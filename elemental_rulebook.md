@@ -54,7 +54,7 @@ When you play a spell card from your hand to the discard pile, trigger its effec
 | **🌳 Earth** | Draw 2 cards. |
 | **🌬️ Air** | Pick a player. Take 1 card from them. |
 | **💧 Water** | Take 1 card from the discard pile. Water stays on top. |
-| **🔥 Fire** | Other players drop 2 cards. Then draw 1 card. |
+| **🔥 Fire** | Draw 1 card. Then other players drop 2 cards. |
 
 ---
 
